@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { clickTarget, notificationFor, parsePushPayload, urlBase64ToBytes } from "./sw-logic";
+import { clickTarget, notificationFor, openURL, parseOpenURL, parsePushPayload, urlBase64ToBytes } from "./sw-logic";
 
 const base = {
   v: 1,
@@ -66,4 +66,23 @@ test("a base64url key decodes to its bytes", () => {
   const bytes = new Uint8Array([4, 255, 0, 62, 63, 250]);
   const b64url = Buffer.from(bytes).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   assert.deepEqual(urlBase64ToBytes(b64url), bytes);
+});
+
+test("a closed app opens at a URL that names the chat, and the page reads it back", () => {
+  const ch = "9c370234-2af9-451c-8a9b-f9bbe5c4c8cc";
+  assert.equal(openURL({}), "/");
+  assert.equal(openURL({ channelID: ch }), `/?open=${ch}`);
+  assert.equal(openURL({ channelID: ch, threadID: "t1" }), `/?open=${ch}&thread=t1`);
+  assert.deepEqual(parseOpenURL(openURL({ channelID: ch, threadID: "t1" }).slice(1)), { channelID: ch, threadID: "t1" });
+  assert.deepEqual(parseOpenURL(`?open=${ch}`), { channelID: ch });
+});
+
+test("an open URL takes only plain ids", () => {
+  assert.equal(openURL({ channelID: "../x" }), "/");
+  assert.equal(openURL({ channelID: "c1", threadID: "a b" }), "/?open=c1");
+  assert.equal(parseOpenURL(""), null);
+  assert.equal(parseOpenURL("?open="), null);
+  assert.equal(parseOpenURL("?open=%3Cscript%3E"), null);
+  assert.equal(parseOpenURL("?open=" + "a".repeat(65)), null);
+  assert.deepEqual(parseOpenURL("?open=c1&thread=a%20b"), { channelID: "c1" });
 });

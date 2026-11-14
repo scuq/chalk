@@ -3,7 +3,7 @@
 Push notifications that reach an iPhone home-screen chalk with the app fully
 closed, without breaking the E2E privacy model and without any paid accounts.
 Planned against v0.5.2. **In progress, as of 14 November 2026** — slices 65-1
-to 65-8 are built, and the plan below was revised that day (next section).
+to 65-9 are built, and the plan below was revised that day (next section).
 
 ## Review of 14 November 2026
 
@@ -230,8 +230,8 @@ envelope signature against the pins before it shows any text.
     one.
   - `notificationclick` focuses a chalk window and posts
     `{type: "chalk-open", channelID, threadID}` to it. If no window exists, it
-    calls `openWindow('/')`. The page listener for the message comes in 65-7
-    and 65-9.
+    calls `openWindow(openURL(target))`. The page listener for the message
+    exists (65-7 and 65-9).
   - `pushsubscriptionchange` subscribes again with the `applicationServerKey`
     of the old subscription. The worker keeps no state: the page reconciles
     at its next start (65-7).
@@ -258,11 +258,12 @@ envelope signature against the pins before it shows any text.
   Unknown: if that button shows in the installed iOS app. The comments at
   `banners.ts:16-20` and `NotificationsPanel.tsx:18-21` say iOS has no
   `Notification`, but no device test confirms it.
-- **Notification click:** nothing opens a given chat at start today. When
-  chalk is open, the in-app banner handler
-  (`web/src/components/App.tsx:2249-2255`) is the entry to reuse. Opening the
-  right chat from a closed app, including the phone's chat screen (phase 135
-  history stack), is new work in 65-9.
+- **Notification click (built in 65-9):** the in-app banner handler and the
+  push click share one handler in `App.tsx`, `openFromNotification`. If a chalk
+  window is open, the worker posts `chalk-open` to it. If no window is open,
+  the worker opens `/?open=<channel>&thread=<thread>`, and the page opens the
+  chat at start. This includes the chat screen on the phone. See "Decisions
+  from 65-9".
 
 ## Slices
 
@@ -276,7 +277,7 @@ envelope signature against the pins before it shows any text.
 | 65-6 (built) | `web/src/sw.ts` and `web/src/sw-logic.ts` + second esbuild invocation → unhashed dist/sw.js + spa.go no-cache special case, `pushsubscriptionchange` resubscribes locally (the page uploads at its next start, 65-7), kept probe `sw-push.mjs`. Registration by the page moves to 65-7 | web/src/, web/build.mjs, internal/server/spa.go, .claude/skills/run-chalk/ | 165 |
 | 65-7 (built) | Client push manager: `web/src/notify/push.ts`, and `push.test.ts` with 11 tests on `planReconcile`, `subscribePayload`, and `openTargetFromMessage`. `App.tsx` calls reconcile in `onWelcome`, installs the open listener beside the banner navigate handler, and calls `dropBrowserSubscription` at logout. Kept probe `push-page.mjs`. No page code calls `enablePush` or `disablePush` yet (65-8) | web/src/notify/, web/src/components/App.tsx, .claude/skills/run-chalk/ | 210 |
 | 65-8 (built) | The "Push" part in Settings > notifications: `PushSettings.tsx`, mounted in `ProfilePanel.tsx` after "do not disturb". It has a switch for push on this device and a select for direct messages or all messages. It shows hints for an iPhone or iPad outside the Home Screen, a browser without push, an unsealed connection, and blocked notifications. It renders nothing if the server has push off. Also `pushAvailability` and `pushErrorText` in `push.ts`, `AuthConfig.push_enabled`, the settings search keyword `push`, tests, and 10 checks in `push-page.mjs`. Changelog bullet | web/src/components/, web/src/notify/, web/src/auth/types.ts, web/src/settings-nav.ts, .claude/skills/run-chalk/ | 300 |
-| 65-9 | Notification click opens the chat (open app, closed app, phone), real-device hardening + payload-contract doc update + changelog | small diffs | 80 |
+| 65-9 (built) | Notification click opens the chat (open app, closed app, phone): `openURL` and `parseOpenURL` in `sw-logic.ts`, the worker opens `openURL(target)`, `openFromNotification` and the cold-start target in `App.tsx`, two tests, and 12 checks in `push-page.mjs` with an iPhone 14 device descriptor. Also the payload-contract section in `docs/wire-protocol.md` and the changelog bullet. The real-device checks are open | web/src/, web/src/components/App.tsx, .claude/skills/run-chalk/, docs/ | 80 |
 | 65-10 (optional, deferred) | "Hide details" lock-screen mode (generic "new activity" text). `generic` column ships in 0063 up front so no second migration. | — | 60 |
 
 Total ≈ 2,100 LOC, roughly half tests — comparable to the phase-31 or
@@ -483,6 +484,43 @@ Requires real hardware:
   notification while no chalk page of the first user was open.
 - **Open checks.** A real iPhone (Home Screen app) and Android Chrome. Both
   are in 65-9.
+
+## Decisions from 65-9
+
+- **Click URL.** The URL is `/?open=<channel>&thread=<thread>`. It holds ids
+  only. `openURL` and `parseOpenURL` accept only ids that match
+  `^[A-Za-z0-9-]{1,64}$`, so both sides check them. `openURL` gives `/` for an
+  invalid channel id.
+- **Query removal.** The page drops the query at once with
+  `history.replaceState`. A reload or the history stack of the phone then
+  does not open the target again.
+- **Wait for state.** The target waits until the channel is in state. Then the
+  page opens it once.
+- **One handler.** The in-app banner and the push click use
+  `openFromNotification`. On the phone, the in-app banner now also switches to
+  the chat screen. Before 65-9 it did not.
+- **Voice.** A voice channel without a thread opens the call view.
+- **Payload contract.** `docs/wire-protocol.md` has a section on web push. It
+  lists the frames, the error codes, the encrypted plaintext, and the click
+  URL.
+- **Live result.** The probe passes 12 of 12 checks on the dev stack. This
+  includes a real push through FCM.
+- **Real-device hardening: open.** No device was available. Run these checks
+  by hand:
+  1. On an iPhone with iOS 16.4 or later:
+     - Safari shows the Home Screen hint.
+     - After Add to Home Screen, the toggle in Settings > notifications asks
+       for permission and turns on.
+     - A direct message from another account, while chalk is closed, shows a
+       notification that names only the sender.
+     - A tap on the notification opens that direct message.
+     - The app badge shows.
+     - After logout and login, push is off for the new session.
+  2. On Android Chrome, do the iPhone checks. Also:
+     - A channel message with scope "all messages" shows a notification.
+     - A thread reply opens the thread.
+  3. On desktop Chrome or Firefox: a push while the browser is open but no
+     chalk tab is open opens a new tab at the chat.
 
 ## Risks
 

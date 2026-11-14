@@ -31,6 +31,7 @@ import { publishNotifyEvent, subscribeNotifyEvents } from "../notify/bus";
 import { badgeCount } from "../notify/badge";
 import { notifyBanners } from "../notify/banners";
 import { dropBrowserSubscription, installPushOpenListener, reconcilePush } from "../notify/push";
+import { parseOpenURL } from "../sw-logic";
 import { titleController } from "../notify/title";
 import { actionsFor, resolvePriority, type RulesConfig } from "../notify/rules";
 import { loadRulesConfig, subscribeRulesConfig } from "../notify/rules-store";
@@ -660,6 +661,45 @@ export function App() {
     }
     prevDmPendingRef.current = state.dmPendingForUserID;
   }, [state.dmPendingForUserID, zuckerActive]);
+  // 65-9: open the chat that a banner or a push notification names. A thread
+  // opens as from the inbox. A channel becomes active, and the unread mark
+  // refreshes as in the phone list (64-8). On the phone this shows the chat
+  // screen. A voice channel without a thread opens the call view.
+  // openRefChannels holds the channels for the callback, because channelsRef
+  // is declared later in this component.
+  const openRefChannels = useRef(state.channels);
+  openRefChannels.current = state.channels;
+  const openFromNotification = useCallback((nav: { channelID?: string; threadID?: string }) => {
+    const id = nav.channelID;
+    if (!id) return;
+    if (nav.threadID) {
+      dispatch({ kind: "open_thread_from_inbox", channelID: id, threadID: nav.threadID });
+    } else {
+      dispatch({ kind: "set_active_channel", channelID: id });
+      dispatch({ kind: "unread_mark_refresh", channelID: id });
+    }
+    if (openRefChannels.current[id]?.channelType === "voice" && !nav.threadID) setCallView(id);
+    else setZuckerScreen("chat");
+  }, []);
+  // 65-9: the target of a cold start. The worker opens "/?open=<channel>",
+  // and this ref reads it once.
+  const pendingOpenRef = useRef(
+    typeof location === "undefined" ? null : parseOpenURL(location.search),
+  );
+  // 65-9: drop the query from the address at once. A reload or the history
+  // stack of the phone then does not open the target again.
+  useEffect(() => {
+    if (pendingOpenRef.current) {
+      history.replaceState(history.state, "", location.pathname + location.hash);
+    }
+  }, []);
+  // 65-9: wait until state holds the channel, then open the target once.
+  useEffect(() => {
+    const t = pendingOpenRef.current;
+    if (!t?.channelID || !state.channels[t.channelID]) return;
+    pendingOpenRef.current = null;
+    openFromNotification(t);
+  }, [state.channels, openFromNotification]);
   // The voice room this user is currently in (roster membership), for the
   // list's voice-dot suppression -- same countsAsUnread rule as the sidebar.
   const zuckerVoiceRoomID = useMemo(() => {
@@ -2245,18 +2285,12 @@ export function App() {
   }, []);
 
   // 50-3: clicking a banner focuses the window and goes to what it was
-  // about. Installed once; dispatch is stable for the app's lifetime.
+  // about, through openFromNotification (65-9). Installed once; dispatch is
+  // stable for the app's lifetime.
   useEffect(() => {
-    const open = (nav: { channelID?: string; threadID?: string }) => {
-      if (nav.channelID && nav.threadID) {
-        dispatch({ kind: "open_thread_from_inbox", channelID: nav.channelID, threadID: nav.threadID });
-      } else if (nav.channelID) {
-        dispatch({ kind: "set_active_channel", channelID: nav.channelID });
-      }
-    };
-    notifyBanners().setNavigateHandler(open);
-    // 65-7: a click on a push notification goes to the same place.
-    return installPushOpenListener(open);
+    notifyBanners().setNavigateHandler(openFromNotification);
+    // 65-7: a click on a push notification, with chalk open, goes to the same place.
+    return installPushOpenListener(openFromNotification);
   }, []);
 
   // --- WS lifecycle ----------------------------------------------------

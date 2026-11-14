@@ -55,6 +55,82 @@ Every frame has a `type` (string) and an optional `ref` (correlation ID for requ
 | `server_notice` | `{ kind, version?, commit? }` | An announcement about the server itself. `kind: "restarting"` is fanned out to every connection on the instance just before graceful shutdown closes them. Unknown kinds are ignored client-side |
 | `error` | `{ ref?, code, message }` | |
 
+## Web push (phase 65)
+
+The push frames exist only on a sealed connection. A guest connection and a connection without a login session cannot use them.
+
+| Type | Payload | Notes |
+|---|---|---|
+| `push_state` | none | Asks for the push settings and the subscription of the session of this connection |
+| `push_subscribe` | `PushSubscribePayload` | Stores the browser subscription for this session and replaces an earlier one |
+| `push_unsubscribe` | none | Deletes the subscription of this session |
+
+The server answers each request with a `push_state_ack`, `push_subscribe_ack`, or `push_unsubscribe_ack` frame.
+The ack has the `ref` of the request.
+Its payload is always a `PushStatePayload`.
+
+`PushSubscribePayload` fields:
+
+| Field | Meaning |
+|---|---|
+| `endpoint` | The https URL of the push service for this browser |
+| `p256dh` | The public key of the browser, base64url |
+| `auth` | The auth secret of the browser, base64url |
+| `scope` | `dms` or `all` |
+| `vapid_public_key` | The `applicationServerKey` that the browser subscribed with |
+
+`PushStatePayload` fields:
+
+| Field | Meaning |
+|---|---|
+| `enabled` | True if the server sends push |
+| `vapid_public_key` | The key a browser must subscribe with. Absent if `enabled` is false |
+| `subscribed` | True if the session has a subscription |
+| `endpoint` | The endpoint of the subscription. Absent if there is none |
+| `scope` | The scope of the subscription. Absent if there is none |
+| `key_current` | True if the browser made the subscription with `vapid_public_key`. A subscription with `key_current` false receives no push |
+
+The server answers a failed request with an `error` frame.
+These codes belong to the push frames:
+
+| Code | Meaning |
+|---|---|
+| `push_disabled` | Push is off on the server. Only `push_subscribe` answers with this code |
+| `push_unsealed` | The connection has no sealed channel |
+| `push_no_session` | The connection has no login session, or the session ended |
+| `push_key_stale` | The browser subscribed with a key that is not the current key. Subscribe again with the key from `push_state` |
+
+### Push plaintext
+
+The server sends each push to the push service as an RFC 8291 encrypted body.
+The server pads the plaintext to 1024 bytes before encryption, so every body has one length.
+The plaintext is one JSON object.
+It has no field for message content.
+
+| Field | Meaning |
+|---|---|
+| `v` | The version. Always 1 |
+| `kind` | The kind. Always `message` |
+| `channel_id` | The channel of the message |
+| `message_id` | The message |
+| `thread_id` | The thread of the message. Absent if the message is not in a thread |
+| `sender_handle` | The handle of the sender, cut to 80 characters |
+| `channel_name` | The channel name, cut to 80 characters. Absent for a direct message |
+| `is_dm` | True for a direct message |
+| `unread` | The badge count for the recipient, at most 99 |
+
+The service worker parses this object in `parsePushPayload` (`web/src/sw-logic.ts`).
+For anything else, it shows a generic notification.
+
+### Click URL
+
+If no chalk window is open, a click on a notification opens `/?open=<channel>&thread=<thread>`.
+The `thread` parameter is absent for a message outside a thread.
+Both ids match `^[A-Za-z0-9-]{1,64}$`.
+The worker and the page both check them.
+If the channel id is not valid, the worker opens `/`.
+The page drops the query from the address when it loads.
+
 ## Encoding
 
 JSON for v1. CBOR may be added behind a subprotocol negotiation in v2 if profiling shows JSON overhead is meaningful. Binary blobs (e.g. attachment chunks) are base64-encoded inside JSON frames where needed.

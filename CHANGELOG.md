@@ -14,7 +14,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ### Added
 - `chalkctl` now creates a web push key for your deployment and has a `chalkctl push` command to show, turn on, turn off, and replace it. A fresh `chalkctl init` turns push on. `chalkctl update` leaves push off until you run `chalkctl push enable`.
-- You can turn on push notifications for each device in Settings, under notifications. Choose direct messages or all messages. A push arrives when you are away or offline in chalk. It names the sender and the channel, and never shows the message. On an iPhone or iPad, add chalk to the Home Screen first. The server administrator must turn push on with `chalkctl push enable`.
+- You can turn on push notifications for each device in Settings, under notifications. Choose direct messages or all messages. A push arrives when you are away or offline in chalk. It names the sender and the channel, and never shows the message. A tap on the notification opens that chat, also when chalk was closed. On an iPhone or iPad, add chalk to the Home Screen first. The server administrator must turn push on with `chalkctl push enable`.
 
 ### Fixed
 - After a short connection loss during a call, chalk keeps the microphone and the camera. An iPhone does not ask for permission again when the app returns from the background.

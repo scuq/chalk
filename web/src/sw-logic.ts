@@ -95,6 +95,36 @@ export function clickTarget(data: unknown): OpenTarget {
   return out;
 }
 
+// 65-9: the ids that the click URL carries. Both sides check them, so the
+// query string never holds anything but a channel id and a thread id.
+const ID_RE = /^[A-Za-z0-9-]{1,64}$/;
+
+/**
+ * openURL returns the URL that the worker opens when no chalk window exists.
+ * It is "/?open=<channel>&thread=<thread>" for a valid target. The thread
+ * part is left out if threadID is missing or invalid. It returns "/" if
+ * channelID is missing or invalid.
+ */
+export function openURL(t: OpenTarget): string {
+  if (!t.channelID || !ID_RE.test(t.channelID)) return "/";
+  const q = new URLSearchParams({ open: t.channelID });
+  if (t.threadID && ID_RE.test(t.threadID)) q.set("thread", t.threadID);
+  return `/?${q.toString()}`;
+}
+
+/**
+ * parseOpenURL returns the target in a query string that openURL made.
+ * It returns null if the "open" value is missing or invalid. It ignores an
+ * invalid "thread" value.
+ */
+export function parseOpenURL(search: string): OpenTarget | null {
+  const q = new URLSearchParams(search);
+  const channelID = q.get("open") ?? "";
+  if (!ID_RE.test(channelID)) return null;
+  const threadID = q.get("thread") ?? "";
+  return ID_RE.test(threadID) ? { channelID, threadID } : { channelID };
+}
+
 /** urlBase64ToBytes decodes a base64url VAPID key into bytes for applicationServerKey. */
 export function urlBase64ToBytes(s: string): Uint8Array<ArrayBuffer> {
   const b64 = s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4);

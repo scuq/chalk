@@ -1,5 +1,6 @@
-// 65-8 probe: the page side of web push. It registers two users, and the
-// second is a friend, so the first can create two channels. It checks that:
+// 65-9 probe: the page side of web push. It registers two users, and the
+// second is a friend and uses an iPhone 14 device descriptor, so the first
+// can create two channels. It checks that:
 // - the page registers /sw.js after welcome,
 // - a session that did not opt in has no browser subscription,
 // - reconcile drops a leftover browser subscription,
@@ -9,9 +10,12 @@
 // - the scope and the toggle survive a reload,
 // - a message from the second user arrives as a push notification through
 //   FCM while no chalk page of the first user is open,
+// - on the phone, a click opens the chat screen from the list,
+// - a cold start at the worker's URL (/?open=<id>) opens the chat and
+//   removes the query from the address,
 // - logout drops the browser subscription,
 // - the console shows no push errors.
-// It runs 10 checks. It closes the avatar nudge on the second account with
+// It runs 12 checks. It closes the avatar nudge on both accounts with
 // "no thanks", and it closes the friends panel.
 //
 // It needs chalkd with push on and the sealed channel (CHALK_SERVER_ID_KEY).
@@ -22,7 +26,7 @@
 // has no Push API in an incognito context, which is the default context of
 // Playwright. With a persistent profile, Playwright's Chromium subscribes
 // through FCM. The steps go to /tmp/chalk-probe/steps.log.
-import { chromium } from "playwright";
+import { chromium, devices } from "playwright";
 import { createHmac } from "node:crypto";
 import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -165,7 +169,8 @@ if (subTry.startsWith("ok")) {
 step("open message");
 // Two channels with a friend, so one channel row is not active.
 step("friend");
-const ctxB = await browser.newContext({ baseURL: BASE });
+// B is a phone, for the 65-9 checks on the chat list.
+const ctxB = await browser.newContext({ ...devices["iPhone 14"], baseURL: BASE });
 const pageB = await ctxB.newPage();
 // The avatar nudge opens on a new account and blocks clicks (parking-privacy.mjs).
 await pageB.addLocatorHandler(pageB.locator("[data-testid='avatar-nudge-backdrop']"), async () => {
@@ -176,7 +181,7 @@ await page.locator("[data-testid='sidebar-add-friend']:visible").click();
 await page.locator("[data-testid='friends-directory-row']", { hasText: USER + "b" }).locator("[data-testid='friends-directory-add']").click();
 await page.waitForTimeout(600);
 await page.locator("[data-testid='friends-panel-close']").click();
-await pageB.locator("[data-testid='sidebar-add-friend']:visible").click();
+await pageB.locator(":is([data-testid='sidebar-add-friend'], [data-testid='zucker-add-friend']):visible").click();
 await pageB.locator("[data-testid='friends-tab-pending']").click();
 await pageB.locator("[data-testid='friends-action-accept']").first().click({ timeout: 8000 });
 await pageB.waitForTimeout(600);
@@ -241,7 +246,7 @@ if (subTry.startsWith("ok")) {
   const keep = await ctx.newPage(); // about:blank keeps the context alive
   await page.close();
   await pageB.waitForTimeout(1500);
-  await pageB.locator("[data-testid='sidebar-item']", { hasText: "push-a" }).click();
+  await pageB.locator("[data-testid='zucker-row']", { hasText: "push-a" }).click();
   await pageB.locator("[data-testid='composer-input']").fill("push probe message");
   await pageB.locator("[data-testid='composer-send']").click();
   let seen = [];
@@ -258,10 +263,36 @@ if (subTry.startsWith("ok")) {
   check("a message from B arrives as a push notification", seen.some((s) => s.includes(`@${USER}b in #push-a`)), seen.join(" ; "));
   await keep.close();
   page = p2;
+  await page.addLocatorHandler(page.locator("[data-testid='avatar-nudge-backdrop']"), async () => {
+    await page.getByRole("button", { name: "no thanks" }).click().catch(() => {});
+  });
   await page.goto(BASE + "/");
   await page.waitForSelector("[data-state='open']", { timeout: 30000 });
   await dismissWhatsNew(page);
 }
+
+// 65-9: on the phone, a click opens the chat screen, from the list and
+// from a cold start at the URL the worker opens.
+step("phone open");
+const pushB = ids.find((r) => r.id !== target?.id) ?? ids[0];
+const phoneChat = async () =>
+  (await pageB.locator("[data-testid='zucker-back']:visible").count()) > 0 &&
+  (await pageB.locator("[data-testid='zucker-rows']:visible").count()) === 0;
+await pageB.locator("[data-testid='zucker-back']:visible").first().click().catch(() => {});
+await pageB.waitForTimeout(500);
+const onList = !(await phoneChat());
+await pageB.evaluate((id) => {
+  navigator.serviceWorker.dispatchEvent(new MessageEvent("message", { data: { type: "chalk-open", channelID: id } }));
+}, pushB.id);
+await pageB.waitForTimeout(800);
+check("on the phone, a click opens the chat screen from the list", onList && (await phoneChat()),
+  `list first: ${onList}, chat now: ${await phoneChat()}`);
+await pageB.goto(`/?open=${pushB.id}`);
+await pageB.waitForSelector("[data-state='open']", { timeout: 30000 });
+await pageB.waitForTimeout(1500);
+const urlAfter = new URL(pageB.url());
+check("a cold start at the worker's URL opens the chat and cleans the URL",
+  (await phoneChat()) && urlAfter.search === "", `chat: ${await phoneChat()}, url: ${urlAfter.pathname}${urlAfter.search}`);
 
 // Logout drops the browser subscription. Subscribe again first, if this Chromium can.
 if (subTry.startsWith("ok")) {
