@@ -150,7 +150,7 @@ committed from it would describe whatever question came last.
 
 | script | what it holds |
 |---|---|
-| `readme-shots.mjs` | regenerates `docs/screenshots/` for the README — two users, a staged conversation, reaction + thread, desktop + mobile. Header says how to re-run it (fresh handles needed) |
+| `readme-shots.mjs` | regenerates `docs/screenshots/` for the README — three users (handles from `README_USER_A`, `README_USER_B`, `README_USER_C`), a staged conversation, reaction + thread, four shots: desktop, thread, phone conversation, phone list. Header says how to re-run it (fresh handles needed) |
 | `unread-landing.mjs` | the 79-2 repro: where opening a channel puts the view, across a real attachment decrypt on a phone-shaped viewport |
 | `reentry-landing.mjs` | 79-10: the zucker second-visit landing on a phone-shaped viewport. Records every write to the scroller offset, so it shows the window in which a landing write had not taken effect. 5 checks (five entries) |
 | `parking-privacy.mjs` | 53-4/53-5: asks the computed style whether the privacy screen blurs every shell child except the parked pane, and whether F9's guard and the way back behave. 15 checks |

@@ -1,10 +1,18 @@
-// README screenshot run: two users, a real conversation, reaction + thread,
-// captured on desktop and iPhone-14 emulation. Based on run-chalk/driver.mjs.
+// README screenshot run: three users, a real conversation, a reaction, and a thread.
+// The script writes four PNGs to /tmp/chalk-driver/readme/:
+// chat-desktop.png, chat-thread.png, chat-mobile.png, and chat-mobile-list.png.
+// Based on run-chalk/driver.mjs.
 //
-// Output lands in /tmp/chalk-driver/readme/; copy the PNGs to
-// docs/screenshots/ when they look right. USER_A/USER_B are registered fresh
-// through the full signup, so both handles must not exist yet — pick new ones
-// (or wipe the old rows) before re-running.
+// Copy the PNGs to docs/screenshots/ when they look right.
+// The handles come from the environment variables README_USER_A, README_USER_B,
+// and README_USER_C. The defaults are ada, kai, and noa.
+// The script registers each user through the full signup,
+// so each handle must not exist yet on the dev database.
+// Before a re-run, set three new handles or delete the old rows.
+//
+// An overlay (the what's-new note or the avatar nudge) can open after sign-in.
+// A locator handler closes it before each action.
+// A handler runs only before an action, so the script also clears overlays before each screenshot.
 import { chromium, devices } from '@playwright/test';
 import { createHmac } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -38,7 +46,34 @@ function totpNow(secretB32) {
   return String(bin % 1_000_000).padStart(6, '0');
 }
 
+// The what's-new note and the avatar nudge open at an unknown time after
+// sign-in, and their backdrops block every click and cover a screenshot.
+async function guard(page) {
+  await page.addLocatorHandler(page.locator("[data-testid='whats-new-backdrop']"), async () => {
+    await page.locator("[data-testid='whats-new-dismiss']").dispatchEvent('click').catch(() => {});
+  }, { noWaitAfter: true });
+  await page.addLocatorHandler(page.locator("[data-testid='avatar-nudge-backdrop']"), async () => {
+    await page.locator("[data-testid='avatar-nudge-later'], [data-testid='avatar-nudge-close']").first().dispatchEvent('click').catch(() => {});
+  }, { noWaitAfter: true });
+}
+
+// A locator handler runs only before an action, so a screenshot taken after
+// a wait can still catch an overlay. This closes each overlay that is open.
+async function clearOverlays(page) {
+  for (const sel of ["[data-testid='whats-new-dismiss']", "[data-testid='avatar-nudge-later']", "[data-testid='avatar-nudge-close']"]) {
+    const b = page.locator(sel).first();
+    if (await b.isVisible().catch(() => false)) { await b.dispatchEvent('click'); await page.waitForTimeout(300); }
+  }
+}
+
+async function shoot(page, name) {
+  await clearOverlays(page);
+  await page.screenshot({ path: OUT + name });
+  console.log('shot:', name);
+}
+
 async function register(page, username) {
+  await guard(page);
   await page.goto('/');
   await page.waitForSelector("[data-testid='password-login']", { timeout: 15000 });
   await page.locator('button.chalk-auth-link', { hasText: 'create an account' }).click();
@@ -121,22 +156,26 @@ const send = async (page, text) => {
 const res = await fetch(BASE + '/api/auth/config').catch(() => null);
 if (!res?.ok) { console.error('chalkd not reachable'); process.exit(1); }
 
-const USER_A = 'ada';
-const USER_B = 'kai';
+const USER_A = process.env.README_USER_A || 'ada';
+const USER_B = process.env.README_USER_B || 'kai';
+const USER_C = process.env.README_USER_C || 'noa';
 
 const browser = await chromium.launch({ args: ['--no-sandbox'] });
 const ctxA = await browser.newContext({
   viewport: { width: 1440, height: 860 }, deviceScaleFactor: 2, baseURL: BASE,
 });
 const ctxB = await browser.newContext({ ...devices['iPhone 14'], baseURL: BASE });
+const ctxC = await browser.newContext({ viewport: { width: 1280, height: 800 }, baseURL: BASE });
 const pageA = await ctxA.newPage();
 const pageB = await ctxB.newPage();
+const pageC = await ctxC.newPage();
 pageA.on('pageerror', e => console.log('A pageerror:', String(e).slice(0, 200)));
 pageB.on('pageerror', e => console.log('B pageerror:', String(e).slice(0, 200)));
 
-console.log('registering both users (Argon2id — slow)...');
+console.log('registering three users (Argon2id — slow)...');
 await register(pageA, USER_A);
 await register(pageB, USER_B);
+await register(pageC, USER_C);
 
 // Friend the two: A adds from the directory, B accepts.
 await openDrawer(pageA);
@@ -207,43 +246,81 @@ try {
   await pageA.keyboard.press('Escape').catch(() => {});
 } catch (e) { console.log('reaction 2 skipped:', e.message.slice(0, 120)); }
 
-// Thread reply on the overhang message.
+// Thread reply on the overhang message. An overlay can open in the middle of
+// the step, so the step clears overlays first and tries once more on failure.
 console.log('starting a thread');
 let threadOpen = false;
-try {
-  const target = pageA.locator("[data-testid='message']", { hasText: 'yellow overhang' }).first();
-  await target.click({ button: 'right' });
-  await pageA.waitForSelector("[data-testid='message-menu']", { timeout: 3000 });
-  await pageA.locator("[data-testid='message-menu-reply']").click();
-  await pageA.waitForSelector("[data-testid='thread-panel']", { timeout: 5000 });
-  const tp = pageA.locator("[data-testid='thread-panel']");
-  await tp.locator("[data-testid='composer-input']").fill('beta: heel hook before the second bolt, then it\'s easy');
-  await tp.locator("[data-testid='composer-send']").click();
-  await pageA.waitForTimeout(600);
-  await tp.locator("[data-testid='composer-input']").fill('and clip from the jug, not the sloper 😅');
-  await tp.locator("[data-testid='composer-send']").click();
-  await pageA.waitForTimeout(800);
-  threadOpen = true;
-} catch (e) { console.log('thread skipped:', e.message.slice(0, 120)); }
-
-if (threadOpen) {
-  await pageA.screenshot({ path: OUT + 'chat-thread.png' });
-  console.log('shot: chat-thread.png');
-  await pageA.locator("[data-testid='thread-panel-close']").click().catch(() => {});
-  await pageA.waitForTimeout(400);
+for (let attempt = 1; attempt <= 2 && !threadOpen; attempt++) {
+  try {
+    await clearOverlays(pageA);
+    const tp = pageA.locator("[data-testid='thread-panel']");
+    if (!(await tp.isVisible().catch(() => false))) {
+      const target = pageA.locator("[data-testid='message']", { hasText: 'yellow overhang' }).first();
+      await target.click({ button: 'right' });
+      await pageA.waitForSelector("[data-testid='message-menu']", { timeout: 3000 });
+      await pageA.locator("[data-testid='message-menu-reply']").click();
+      await pageA.waitForSelector("[data-testid='thread-panel']", { timeout: 5000 });
+    }
+    for (const text of ["beta: heel hook before the second bolt, then it's easy", 'and clip from the jug, not the sloper 😅']) {
+      if (await tp.locator("[data-testid='message']", { hasText: text.slice(0, 20) }).count()) continue;
+      await clearOverlays(pageA);
+      await tp.locator("[data-testid='composer-input']").fill(text);
+      await tp.locator("[data-testid='composer-send']").click({ timeout: 10000 });
+      await pageA.waitForTimeout(700);
+    }
+    threadOpen = true;
+  } catch (e) { console.log(`thread attempt ${attempt} failed:`, e.message.split('\n')[0].slice(0, 120)); }
 }
+
+if (threadOpen) await shoot(pageA, 'chat-thread.png');
+// The desktop shot shows the feed alone, so the panel closes whatever happened above.
+await pageA.locator("[data-testid='thread-panel-close']").click().catch(() => {});
+await pageA.waitForTimeout(400);
 
 await pageA.mouse.move(0, 0);
 await pageA.waitForTimeout(300);
-await pageA.screenshot({ path: OUT + 'chat-desktop.png' });
-console.log('shot: chat-desktop.png');
+await shoot(pageA, 'chat-desktop.png');
 
 // Mobile: B looks at the same channel.
 await pageB.waitForTimeout(800);
-await pageB.screenshot({ path: OUT + 'chat-mobile.png' });
-console.log('shot: chat-mobile.png');
+await shoot(pageB, 'chat-mobile.png');
+
+// 137: the phone's conversation list. User C becomes the second friend of user B
+// and writes in a direct conversation. User A posts in the other channel.
+// The list then shows two friend chips, a direct conversation row with its
+// status dot, and an unread channel.
+console.log('staging the phone list');
+await pageC.locator("[data-testid='sidebar-add-friend']:visible").click();
+await pageC.waitForSelector("[data-testid='friends-panel']", { timeout: 5000 });
+await pageC.locator("[data-testid='friends-directory-row']")
+  .filter({ has: pageC.getByText(`@${USER_B}`, { exact: true }) })
+  .locator("[data-testid='friends-directory-add']").click();
+await pageC.waitForTimeout(600);
+await pageC.locator("[data-testid='friends-panel-close']").click();
+await openDrawer(pageB);
+await pageB.locator("[data-testid='zucker-add-friend']:visible").click();
+await pageB.waitForSelector("[data-testid='friends-panel']", { timeout: 5000 });
+await pageB.locator("[data-testid='friends-tab-pending']").click();
+await pageB.locator("[data-testid='friends-action-accept']").first().click({ timeout: 8000 });
+await pageB.waitForTimeout(600);
+await pageB.locator("[data-testid='friends-panel-close']").click();
+await pageB.waitForTimeout(800);
+await pageB.locator("[data-testid='zucker-friend-chip']", { hasText: USER_C }).first().click();
+await pageB.waitForSelector("[data-testid='composer-input']", { timeout: 15000 });
+await send(pageB, 'still on for the market on saturday?');
+await openDrawer(pageB);
+await pageC.waitForTimeout(1500);
+// On desktop, a friend row opens the direct conversation with that friend.
+await pageC.locator("[data-testid='sidebar-friend-item']:visible", { hasText: USER_B }).first().click();
+await pageC.waitForSelector("[data-testid='composer-input']", { timeout: 15000 });
+await send(pageC, 'yes! 9am at the fountain 🍓');
+await ctxC.close();
+await openChannel(pageA, 'gamenight');
+await send(pageA, 'who has the expansion box?');
+await pageB.waitForTimeout(2500);
+await shoot(pageB, 'chat-mobile-list.png');
 
 writeFileSync(OUT + 'credentials.txt',
-  `base: ${BASE}\nuser A: ${USER_A}\nuser B: ${USER_B}\npassword: ${PASSWORD}\n`);
+  `base: ${BASE}\nuser A: ${USER_A}\nuser B: ${USER_B}\nuser C: ${USER_C}\npassword: ${PASSWORD}\n`);
 console.log('done →', OUT);
 await browser.close();

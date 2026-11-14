@@ -50,11 +50,14 @@ never a bypass of the second factor.
 
 The default theme (fourteen more in settings), on a dev instance:
 
-![A channel in the desktop layout: sidebar with friends and channels, a conversation with reactions, an @mention and a thread indicator](docs/screenshots/chat-desktop.png)
+![A channel in the desktop layout: sidebar with friends and channels, a conversation with reactions, an @mention, and a thread indicator](docs/screenshots/chat-desktop.png)
 
 ![The same channel with the thread panel open on the right, showing two replies and their own composer](docs/screenshots/chat-thread.png)
 
-<img src="docs/screenshots/chat-mobile.png" width="360" alt="The mobile layout: the same conversation with the new-messages divider and a highlighted @mention">
+<p>
+<img src="docs/screenshots/chat-mobile-list.png" width="300" alt="The phone conversation list: five icon buttons, two friend chips, an unread channel, an unread direct conversation, and a read channel">
+<img src="docs/screenshots/chat-mobile.png" width="300" alt="The phone layout: a channel with a reaction, and a composer with a full-width field above a row of tools and send">
+</p>
 
 ## Quick start (development)
 

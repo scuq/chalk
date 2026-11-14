@@ -105,12 +105,15 @@ const imgFile = (name, w, h, seed) => { const p = OUT + name; writeFileSync(p, m
 
 // ---- registration -----------------------------------------------------
 async function register(page, username) {
-  // 135-3: The "what's new" note opens at an unknown time after sign-in.
-  // Its backdrop blocks every tap, so the handler closes the note.
-  // The handler dispatches the click event and uses `noWaitAfter: true`,
-  // so the run never waits for the note to disappear.
+  // 135-3: The "what's new" note and the avatar nudge open at an unknown time after sign-in.
+  // Their backdrops block every tap, so each handler closes its overlay.
+  // The handlers dispatch the click event and use `noWaitAfter: true`,
+  // so the run never waits for an overlay to disappear.
   await page.addLocatorHandler(page.locator("[data-testid='whats-new-backdrop']"), async () => {
     await page.locator("[data-testid='whats-new-dismiss']").dispatchEvent('click').catch(() => {});
+  }, { noWaitAfter: true });
+  await page.addLocatorHandler(page.locator("[data-testid='avatar-nudge-backdrop']"), async () => {
+    await page.locator("[data-testid='avatar-nudge-later'], [data-testid='avatar-nudge-close']").first().dispatchEvent('click').catch(() => {});
   }, { noWaitAfter: true });
   await page.goto('/');
   await page.waitForSelector("[data-testid='password-login']", { timeout: 20000 });

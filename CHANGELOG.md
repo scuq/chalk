@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.12.1 — 15 November 2026 — Push notifications and a reworked phone layout
 
 ### Added
 - `chalkctl` now creates a web push key for your deployment and has a `chalkctl push` command to show, turn on, turn off, and replace it. A fresh `chalkctl init` turns push on. `chalkctl update` leaves push off until you run `chalkctl push enable`.
