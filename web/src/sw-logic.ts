@@ -96,7 +96,7 @@ export function clickTarget(data: unknown): OpenTarget {
 }
 
 /** urlBase64ToBytes decodes a base64url VAPID key into bytes for applicationServerKey. */
-export function urlBase64ToBytes(s: string): Uint8Array {
+export function urlBase64ToBytes(s: string): Uint8Array<ArrayBuffer> {
   const b64 = s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4);
   const bin = atob(b64);
   const out = new Uint8Array(bin.length);

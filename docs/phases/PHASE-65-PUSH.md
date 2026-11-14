@@ -3,7 +3,7 @@
 Push notifications that reach an iPhone home-screen chalk with the app fully
 closed, without breaking the E2E privacy model and without any paid accounts.
 Planned against v0.5.2. **In progress, as of 14 November 2026** — slices 65-1
-to 65-6 are built, and the plan below was revised that day (next section).
+to 65-7 are built, and the plan below was revised that day (next section).
 
 ## Review of 14 November 2026
 
@@ -275,7 +275,7 @@ envelope signature against the pins before it shows any text.
 | 65-4 (built) | WebSocket frames inside the sealed channel: `push_state`, `push_subscribe`, and `push_unsubscribe`, each answered by `<type>_ack`. The connection carries its session token. Guests are refused. Validation covers the https endpoint and the key lengths. Migration `0064_push_subscription_vapid_key.sql` adds `vapid_key`. Replaces the old HTTP API slice | internal/server/, internal/proto/, internal/store/, migrations/, web/src/proto.ts | 220 |
 | 65-5 (built) | Dispatcher + send hook: payload builder (the plaintext choke point), recipient selection via presence, encrypt/send/prune, cooldown, InstanceID-guarded hook in handleMessageEvent, tests against an httptest fake relay, the new "third parties" section in `docs/threat-model.md` | internal/server/push_dispatch.go, internal/server/server.go, internal/presence/store.go, internal/store/push.go, docs/threat-model.md | 340 |
 | 65-6 (built) | `web/src/sw.ts` and `web/src/sw-logic.ts` + second esbuild invocation → unhashed dist/sw.js + spa.go no-cache special case, `pushsubscriptionchange` resubscribes locally (the page uploads at its next start, 65-7), kept probe `sw-push.mjs`. Registration by the page moves to 65-7 | web/src/, web/build.mjs, internal/server/spa.go, .claude/skills/run-chalk/ | 165 |
-| 65-7 | Client push manager `web/src/notify/push.ts`: subscribe and reconcile over the WebSocket at every start, logout cleanup, tests | web/src/notify/ | 210 |
+| 65-7 (built) | Client push manager: `web/src/notify/push.ts`, and `push.test.ts` with 11 tests on `planReconcile`, `subscribePayload`, and `openTargetFromMessage`. `App.tsx` calls reconcile in `onWelcome`, installs the open listener beside the banner navigate handler, and calls `dropBrowserSubscription` at logout. Kept probe `push-page.mjs`. No page code calls `enablePush` or `disablePush` yet (65-8) | web/src/notify/, web/src/components/App.tsx, .claude/skills/run-chalk/ | 210 |
 | 65-8 | NotificationsPanel "Push" section. **Changelog bullet.** | web/src/components/ | 150 |
 | 65-9 | Notification click opens the chat (open app, closed app, phone), real-device hardening + payload-contract doc update + changelog | small diffs | 80 |
 | 65-10 (optional, deferred) | "Hide details" lock-screen mode (generic "new activity" text). `generic` column ships in 0063 up front so no second migration. | — | 60 |
@@ -431,6 +431,38 @@ Requires real hardware:
   a real NOTIFY to a real push service. The sender refuses loopback, so the
   check needs a real browser subscription. Do it in headed Chrome through FCM
   from 65-7 onward, and on a real iPhone in 65-9.
+
+## Decisions from 65-7
+
+- **Reconcile table.** After every welcome, `reconcilePush` asks the server
+  for `push_state`. Then `planReconcile` picks one action from these cases:
+  - Server push off: nothing.
+  - Permission not granted: drop the server row if it exists, and the browser
+    subscription.
+  - Session not opted in: drop a leftover browser subscription.
+  - Opted in and no browser subscription: subscribe again with the stored
+    scope.
+  - Browser key differs from the server key: unsubscribe and subscribe again.
+  - Endpoint differs or `key_current` is false: upload.
+- **Opt-in belongs to a login session.** This follows from the session
+  binding of 65-1. After a new login, push is off until the user turns it on
+  again. The rejected alternative uploaded any browser subscription found at
+  start. On a shared browser, a new account would then get the opt-in of the
+  previous account without consent.
+- **No reconcile on an unsealed connection.** Push frames are sealed-only, so
+  `reconcilePush` returns at once.
+- **Permission.** Reconcile never requests it, because the request needs a
+  user gesture. Only `enablePush` requests it, and it asks before its first
+  await.
+- **Logout.** `dropBrowserSubscription` drops only the browser
+  subscription. The server row cascades with the session.
+- **Click.** The listener for the `chalk-open` message uses the same handler
+  as the in-app banners. The phone screen switch and the closed-app case stay
+  in 65-9.
+- **Open check.** The opt-in path needs the 65-8 button: `enablePush`, then
+  `push_subscribe`, then a real push through FCM. The kept probe
+  `push-page.mjs` covers the rest. It needs the dev stack with push on and
+  the sealed channel.
 
 ## Risks
 

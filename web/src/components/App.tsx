@@ -30,6 +30,7 @@ import { categoryForMessage } from "../notify/classify";
 import { publishNotifyEvent, subscribeNotifyEvents } from "../notify/bus";
 import { badgeCount } from "../notify/badge";
 import { notifyBanners } from "../notify/banners";
+import { dropBrowserSubscription, installPushOpenListener, reconcilePush } from "../notify/push";
 import { titleController } from "../notify/title";
 import { actionsFor, resolvePriority, type RulesConfig } from "../notify/rules";
 import { loadRulesConfig, subscribeRulesConfig } from "../notify/rules-store";
@@ -2246,13 +2247,16 @@ export function App() {
   // 50-3: clicking a banner focuses the window and goes to what it was
   // about. Installed once; dispatch is stable for the app's lifetime.
   useEffect(() => {
-    notifyBanners().setNavigateHandler((nav) => {
+    const open = (nav: { channelID?: string; threadID?: string }) => {
       if (nav.channelID && nav.threadID) {
         dispatch({ kind: "open_thread_from_inbox", channelID: nav.channelID, threadID: nav.threadID });
       } else if (nav.channelID) {
         dispatch({ kind: "set_active_channel", channelID: nav.channelID });
       }
-    });
+    };
+    notifyBanners().setNavigateHandler(open);
+    // 65-7: a click on a push notification goes to the same place.
+    return installPushOpenListener(open);
   }, []);
 
   // --- WS lifecycle ----------------------------------------------------
@@ -2279,7 +2283,7 @@ export function App() {
       deviceId: getOrCreateDeviceId(),
       deviceType: classifyDevice(),
       onState: (s, detail) => dispatch({ kind: "ws_state", state: s, detail }),
-      onWelcome: (w: WelcomePayload) =>
+      onWelcome: (w: WelcomePayload) => {
         dispatch({
           kind: "welcome",
           userID: w.user_id,
@@ -2291,7 +2295,11 @@ export function App() {
           wrapSigRequired: !!w.wrap_sig_required, // 82-6
           serverVersion: w.server_version, // 39-1
           serverCommit: w.server_commit,
-        }),
+        });
+        // 65-7: after every connect, make the push subscription and the
+        // server row agree.
+        void reconcilePush(client);
+      },
       onFrame: (f: Frame) => handleFrame(f),
       onServerPinWall: (info) => setServerPinWall(info), // 83-6
     });
@@ -5373,6 +5381,11 @@ export function App() {
     // reducer state, so the reset below does not reach it. Drop it here or
     // the next account signing in on this browser inherits it.
     resetDisplayNames();
+    // 65-7: the server row went with the session. Drop the browser
+    // subscription too, so the next account does not inherit it.
+    void dropBrowserSubscription().catch((err) =>
+      console.error("drop push subscription failed:", err),
+    );
     dispatch({ kind: "auth_logged_out" });
   };
 

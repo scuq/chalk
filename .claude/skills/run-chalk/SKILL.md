@@ -55,6 +55,33 @@ everything — allow ~2–3 min):
 timeout 180 bash -c 'until curl -sf http://127.0.0.1:8443/api/auth/config >/dev/null; do sleep 2; done'
 ```
 
+To run the stack with push and the sealed channel, make two files once.
+The first holds a stable server identity key.
+The second holds a dev VAPID pair, as the lines `PRIV=...` and `PUB=...`.
+The private key is the raw 32 bytes and the public key is the 65-byte uncompressed point.
+Both are unpadded base64url.
+
+```bash
+head -c 32 /dev/urandom | base64 -w0 > ~/.cache/chalk-dev-server-id-key
+
+t=$(openssl ecparam -name prime256v1 -genkey -noout | openssl ec -text -noout 2>/dev/null)
+priv=$(echo "$t" | awk '/priv:/{f=1;next}/pub:/{f=0}f' | tr -d ' :\n' | sed 's/^00\(.\{64\}\)$/\1/')
+pub=$(echo "$t" | awk '/pub:/{f=1;next}/ASN1/{f=0}f' | tr -d ' :\n')
+b() { echo -n "$1" | xxd -r -p | base64 -w0 | tr '+/' '-_' | tr -d '='; }
+printf 'PRIV=%s\nPUB=%s\n' "$(b $priv)" "$(b $pub)" > ~/.cache/chalk-dev-vapid
+chmod 600 ~/.cache/chalk-dev-vapid
+```
+
+Then add these variables to the `tools/dev.sh` command above:
+
+```bash
+CHALK_SERVER_ID_KEY="$(cat ~/.cache/chalk-dev-server-id-key)" \
+CHALK_PUSH_ENABLED=true \
+CHALK_VAPID_PUBLIC_KEY="$(sed -n 's/^PUB=//p' ~/.cache/chalk-dev-vapid)" \
+CHALK_VAPID_PRIVATE_KEY="$(sed -n 's/^PRIV=//p' ~/.cache/chalk-dev-vapid)" \
+CHALK_VAPID_SUBJECT=mailto:admin@cyberdyne.example \
+```
+
 Stop / restart:
 
 ```bash
@@ -131,6 +158,7 @@ committed from it would describe whatever question came last.
 | `thread-refresh.mjs` | 42-10: cuts A's websocket, has B reply in a thread, and asks whether the pane catches up — reopened and left open, desktop and mobile. Its header carries the finding that makes it work: `setOffline()` does not touch an established WebSocket, so it takes `routeWebSocket` to stage this at all. 8 checks |
 | `flair-demo.mjs` | 115: not a probe — a scene. A headed window signed in as you, four bots chatting in bursts, one flipping away/online, one DMing you, three wearing frames; runs until killed. The `flair-demo` skill is its front door |
 | `sw-push.mjs` | 65-6: registers `/sw.js` on the dev stack, delivers pushes through CDP `ServiceWorker.deliverPushMessage`, and reads `getNotifications()`. It holds the title, body, tag, icon, and open target, a replaced tag, the generic notification, and a page that still loads. Needs `chromium.launch({ channel: "chromium" })`, because the default headless shell has no notification permission. `notificationclick` is not covered. 11 checks |
+| `push-page.mjs` | 65-7: the page side of web push. Registers two users, the second as a friend, to create two channels. It tests six things. The page registers `/sw.js` after welcome. A session that did not opt in has no browser subscription. Reconcile drops a leftover browser subscription. A `chalk-open` message opens the channel. Logout drops the browser subscription. The console shows no push errors. Needs chalkd with push on and the sealed channel, and the dev VAPID pair. Uses a persistent profile in `/tmp/chalk-probe/profile`. Steps go to `/tmp/chalk-probe/steps.log`. 6 checks |
 | `ui-sweep.mjs` | 133: screenshots and measures the UI. Fifteen themes on the shell, the composer and keyboard focus, phone width, and the voice room with up to eight users (a `CLIPPED` line when a tile passes the stage edge). With `--headed` it is a demo and runs until killed. The `ui-sweep` skill is its front door |
 
 Each exists because the assertion needs a real browser and `web/test.mjs` has
@@ -155,6 +183,12 @@ cd web && npx tsc --noEmit && node test.mjs && node build.mjs   # 815 tests, 0 f
 - **`CHALK_TOTP_ENC_KEY` unset → signup silently 500s.** The wizard shows a
   bare "HTTP 500" banner; chalkd stderr has the real message. `tools/dev.sh`
   never sets it. Keep the key stable across restarts (hence the key file).
+- **Without `CHALK_SERVER_ID_KEY` the connection is plaintext, and push looks dead.**
+  The page push code does nothing on an unsealed connection. This is by
+  design: push frames travel only on the sealed channel.
+- **Chrome refuses the Push API in an incognito context.** The default
+  Playwright `newContext` is such a context. Use `launchPersistentContext`, as
+  `push-page.mjs` does.
 - **The `test/e2e` specs cannot get past the sign-in card.** The identity gate
   needs WebCrypto Ed25519 (Chromium ≥ 137). `test/e2e` now pins Playwright
   1.64.1 (Chromium 156). Its specs predate auth v2 and need an authenticated
