@@ -643,6 +643,43 @@ export const TypeTypingUpdate = "typing_update";
 export const TypePing = "ping";
 export const TypePong = "pong";
 
+// ---- Phase 65-4: Web Push (internal/proto/push.go) -------------------
+// Only on a sealed connection. Every request is answered with a
+// PushStatePayload under its own ack type.
+
+export const TypePushState = "push_state";
+export const TypePushStateAck = "push_state_ack";
+export const TypePushSubscribe = "push_subscribe";
+export const TypePushSubscribeAck = "push_subscribe_ack";
+export const TypePushUnsubscribe = "push_unsubscribe";
+export const TypePushUnsubscribeAck = "push_unsubscribe_ack";
+
+export const ErrCodePushDisabled = "push_disabled";
+export const ErrCodePushUnsealed = "push_unsealed";
+export const ErrCodePushNoSession = "push_no_session";
+export const ErrCodePushKeyStale = "push_key_stale";
+
+/** A browser PushSubscription; p256dh and auth are base64url. */
+export interface PushSubscribePayload {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  scope: "dms" | "all";
+  /** The applicationServerKey the browser subscribed with. */
+  vapid_public_key: string;
+}
+
+/** The server's view of push for this login session. */
+export interface PushStatePayload {
+  enabled: boolean;
+  vapid_public_key?: string;
+  subscribed: boolean;
+  endpoint?: string;
+  scope?: "dms" | "all";
+  /** False when the browser subscribed with an older key. Subscribe again. */
+  key_current: boolean;
+}
+
 // typing is fire-and-forget: no ack, nothing persisted. Re-send it every few
 // seconds while composing; the server throttles anything faster and drops it
 // silently. thread_id is on the wire for a future thread indicator -- the

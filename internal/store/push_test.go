@@ -38,11 +38,12 @@ func TestPushSubscriptions(t *testing.T) {
 		}
 		return sess.Token
 	}
+	const vapidKey = "BKEY"
 	p256dh := keyBytes(4, 65)
 	auth := keyBytes(7, 16)
 	sub := func(token []byte, endpoint string, scope PushScope) PushSubscription {
 		t.Helper()
-		p, err := s.UpsertPushSubscription(ctx, token, endpoint, p256dh, auth, scope)
+		p, err := s.UpsertPushSubscription(ctx, token, endpoint, p256dh, auth, scope, vapidKey)
 		if err != nil {
 			t.Fatalf("upsert %s: %v", endpoint, err)
 		}
@@ -89,17 +90,17 @@ func TestPushSubscriptions(t *testing.T) {
 	})
 
 	t.Run("an unknown token and bad input are refused", func(t *testing.T) {
-		if _, err := s.UpsertPushSubscription(ctx, keyBytes(9, 32), "https://push.example/x", p256dh, auth, PushScopeDMs); !errors.Is(err, ErrNotFound) {
+		if _, err := s.UpsertPushSubscription(ctx, keyBytes(9, 32), "https://push.example/x", p256dh, auth, PushScopeDMs, vapidKey); !errors.Is(err, ErrNotFound) {
 			t.Fatalf("unknown token: %v", err)
 		}
 		tok := mkSession(alice)
-		if _, err := s.UpsertPushSubscription(ctx, tok, "https://push.example/x", p256dh, auth, PushScope("loud")); err == nil {
+		if _, err := s.UpsertPushSubscription(ctx, tok, "https://push.example/x", p256dh, auth, PushScope("loud"), vapidKey); err == nil {
 			t.Fatal("bad scope accepted")
 		}
-		if _, err := s.UpsertPushSubscription(ctx, tok, "https://push.example/x", keyBytes(4, 64), auth, PushScopeDMs); err == nil {
+		if _, err := s.UpsertPushSubscription(ctx, tok, "https://push.example/x", keyBytes(4, 64), auth, PushScopeDMs, vapidKey); err == nil {
 			t.Fatal("short p256dh accepted")
 		}
-		if _, err := s.UpsertPushSubscription(ctx, tok, "https://push.example/x", p256dh, keyBytes(7, 15), PushScopeDMs); err == nil {
+		if _, err := s.UpsertPushSubscription(ctx, tok, "https://push.example/x", p256dh, keyBytes(7, 15), PushScopeDMs, vapidKey); err == nil {
 			t.Fatal("short auth accepted")
 		}
 		if n := count(alice); n != 0 {
@@ -133,15 +134,15 @@ func TestPushSubscriptions(t *testing.T) {
 		sub(bt, "https://push.example/lb", PushScopeAll)
 		both := []uuid.UUID{alice, bob}
 
-		dm, err := s.ListPushSubscriptionsForUsers(ctx, both, true)
+		dm, err := s.ListPushSubscriptionsForUsers(ctx, both, true, vapidKey)
 		if err != nil || len(dm) != 2 {
 			t.Fatalf("dm list: %v, %d rows", err, len(dm))
 		}
-		ch, err := s.ListPushSubscriptionsForUsers(ctx, both, false)
+		ch, err := s.ListPushSubscriptionsForUsers(ctx, both, false, vapidKey)
 		if err != nil || len(ch) != 1 || ch[0].UserID != bob {
 			t.Fatalf("channel list: %v, %+v", err, ch)
 		}
-		if none, err := s.ListPushSubscriptionsForUsers(ctx, nil, true); err != nil || none != nil {
+		if none, err := s.ListPushSubscriptionsForUsers(ctx, nil, true, vapidKey); err != nil || none != nil {
 			t.Fatalf("empty input: %v, %+v", err, none)
 		}
 
@@ -150,7 +151,7 @@ func TestPushSubscriptions(t *testing.T) {
 			`UPDATE sessions SET expires_at = now() - interval '1 minute' WHERE token = $1`, bt); err != nil {
 			t.Fatal(err)
 		}
-		dm, _ = s.ListPushSubscriptionsForUsers(ctx, both, true)
+		dm, _ = s.ListPushSubscriptionsForUsers(ctx, both, true, vapidKey)
 		if len(dm) != 1 || dm[0].UserID != alice {
 			t.Fatalf("expired session still listed: %+v", dm)
 		}
@@ -193,6 +194,25 @@ func TestPushSubscriptions(t *testing.T) {
 		}
 	})
 
+	t.Run("a subscription made with another key is not listed", func(t *testing.T) {
+		dave := mkUser("dave")
+		tok := mkSession(dave)
+		if _, err := s.UpsertPushSubscription(ctx, tok, "https://push.example/old", p256dh, auth, PushScopeDMs, "OLDKEY"); err != nil {
+			t.Fatal(err)
+		}
+		if got, _ := s.ListPushSubscriptionsForUsers(ctx, []uuid.UUID{dave}, true, vapidKey); len(got) != 0 {
+			t.Fatalf("stale subscription listed: %+v", got)
+		}
+		got, err := s.GetPushSubscriptionForSession(ctx, tok)
+		if err != nil || got.VAPIDKey != "OLDKEY" {
+			t.Fatalf("get: %v %+v", err, got)
+		}
+		sub(tok, "https://push.example/new", PushScopeDMs)
+		if got, _ := s.ListPushSubscriptionsForUsers(ctx, []uuid.UUID{dave}, true, vapidKey); len(got) != 1 {
+			t.Fatalf("resubscribed row not listed: %+v", got)
+		}
+	})
+
 	t.Run("the cap evicts the oldest", func(t *testing.T) {
 		carol := mkUser("carol")
 		var first []byte
@@ -222,7 +242,7 @@ func TestPushSubscriptions(t *testing.T) {
 			t.Fatal(err)
 		}
 		tok := mkSession(guest)
-		if _, err := s.UpsertPushSubscription(ctx, tok, "https://push.example/g", p256dh, auth, PushScopeDMs); !errors.Is(err, ErrNotFound) {
+		if _, err := s.UpsertPushSubscription(ctx, tok, "https://push.example/g", p256dh, auth, PushScopeDMs, vapidKey); !errors.Is(err, ErrNotFound) {
 			t.Fatalf("guest upsert: %v", err)
 		}
 	})

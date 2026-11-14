@@ -26,6 +26,7 @@ import (
 	"github.com/scuq/chalk/internal/pubsub"
 	"github.com/scuq/chalk/internal/store"
 	"github.com/scuq/chalk/internal/version"
+	"github.com/scuq/chalk/internal/webpush"
 	"strings"
 )
 
@@ -153,6 +154,10 @@ type WSHandler struct {
 	// CHALK_DB_URL_GUEST is unset -- guest WS connections are then refused
 	// at the handshake). Set by the Server after construction.
 	guestStore *store.Guest
+
+	// 65-4: the Web Push sender. Nil when push is disabled. Set by the
+	// Server after construction.
+	push *webpush.Sender
 }
 
 // NewWSHandler constructs a handler. Phase 06 adds the presence/friends
@@ -365,6 +370,9 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if sessionUser != nil {
 		conn.SessionExpiresAt = sessionUser.Session.ExpiresAt // 80-10: TURN clamp input
+		if !isGuest {
+			conn.SessionToken = sessionUser.Session.Token // 65-4: push subscriptions
+		}
 	}
 	if isGuest {
 		conn.IsGuest = true
@@ -854,6 +862,8 @@ func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 			h.handleVoiceState(ctx, c, conn, f)
 		case proto.TypePing: // 135-6
 			h.sendPong(ctx, c, f.Ref)
+		case proto.TypePushState, proto.TypePushSubscribe, proto.TypePushUnsubscribe: // 65-4
+			h.handlePush(ctx, c, conn, f)
 
 		default:
 			h.sendError(ctx, c, f.Ref, proto.ErrCodeUnknownType,

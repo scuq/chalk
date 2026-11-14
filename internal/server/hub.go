@@ -553,6 +553,11 @@ type Conn struct {
 	// no session backed the conn (store-less tests).
 	SessionExpiresAt time.Time
 
+	// 65-4: the raw token of the login session behind this connection. Push
+	// subscriptions are bound to it. Empty for guests and store-less tests.
+	// It never leaves the process.
+	SessionToken []byte
+
 	// presenceMu guards claimedPresence, which the presence heartbeat
 	// goroutine reads while the read loop writes it.
 	presenceMu      sync.Mutex

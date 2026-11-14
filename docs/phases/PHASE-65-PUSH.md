@@ -3,7 +3,7 @@
 Push notifications that reach an iPhone home-screen chalk with the app fully
 closed, without breaking the E2E privacy model and without any paid accounts.
 Planned against v0.5.2. **In progress, as of 14 November 2026** — slices 65-1
-to 65-3 are built, and the plan below was revised that day (next section).
+to 65-4 are built, and the plan below was revised that day (next section).
 
 ## Review of 14 November 2026
 
@@ -257,7 +257,7 @@ envelope signature against the pins before it shows any text.
 | 65-1 (built) | Migration `0063_push_subscriptions.sql` + `internal/store/push.go`: session-bound upsert with the 8-per-user cap, get/delete by session, delete by id, touch, `ListPushSubscriptionsForUsers(userIDs, isDM)` with scope and session-validity filter, tests | migrations/, internal/store/ | 280 |
 | 65-2 (built) | `internal/webpush`: RFC 8291 aes128gcm encrypt w/ fixed-length padding, RFC 8292 VAPID ES256 JWT (`aud` = origin of *this* endpoint, computed per-send, not a fixed value and not chalk's own origin — a cached token is reusable only across subscriptions sharing a host), https-only sender with IP vet, Topic/TTL/Urgency, typed ErrGone; tests incl. the Appendix A vector byte-exact and constant ciphertext length across differing handles | internal/webpush/ (new) | 450 |
 | 65-3 (built) | Config + chalkctl: `internal/config/push.go`, VAPID keygen/preserve/backfill + `CHALK_VAPID_SUBJECT` (flag or config key, domain-derived default, preserved like the keys), `chalkctl push status\|enable\|disable\|rotate-key --yes`, env template, `push_enabled` only in /api/auth/config. chalkd builds the sender only if push is enabled, and `server.Options.Push` holds it. Nothing calls it before 65-4 and 65-5 | internal/config/, internal/chalkctl/, internal/auth/ | 290 |
-| 65-4 | WebSocket frames inside the sealed channel: push config (VAPID public key), subscribe, unsubscribe, and state. The connection carries its session token. Guests are refused. Validation covers the https endpoint and the key lengths. Replaces the old HTTP API slice | internal/server/, internal/proto/ | 220 |
+| 65-4 (built) | WebSocket frames inside the sealed channel: `push_state`, `push_subscribe`, and `push_unsubscribe`, each answered by `<type>_ack`. The connection carries its session token. Guests are refused. Validation covers the https endpoint and the key lengths. Migration `0064_push_subscription_vapid_key.sql` adds `vapid_key`. Replaces the old HTTP API slice | internal/server/, internal/proto/, internal/store/, migrations/, web/src/proto.ts | 220 |
 | 65-5 | Dispatcher + send hook: payload builder (the plaintext choke point), recipient selection via presence, encrypt/send/prune, cooldown, InstanceID-guarded hook in handleMessageEvent, tests against an httptest fake relay, the new "third parties" section in `docs/threat-model.md` | internal/server/push_dispatch.go, cmd/chalkd/, docs/threat-model.md | 340 |
 | 65-6 | `web/src/sw.ts` + second esbuild invocation → unhashed dist/sw.js + spa.go no-cache special case, `pushsubscriptionchange` resubscribes locally and marks the subscription for upload | web/src/, web/build.mjs, internal/server/spa.go | 165 |
 | 65-7 | Client push manager `web/src/notify/push.ts`: subscribe and reconcile over the WebSocket at every start, logout cleanup, tests | web/src/notify/ | 210 |
@@ -275,6 +275,10 @@ Locally verifiable (no device, no deployment):
 - `CHALK_TEST_PGURL=... go test ./internal/store/ -run TestPushSubscriptions`
   (7 subtests; they pass in 65-1).
 - `go test ./internal/webpush/` (8 tests; they pass in 65-2).
+- `go test ./internal/server/ -run 'TestParsePushSubscribe|TestPushStatePayload|TestGuestFrameAllowlist'` (they pass in 65-4).
+- `CHALK_TEST_PGURL=... go test ./test/integration/ -run TestPushFramesEndToEnd`
+  (65-4). It uses a real chalkd, the dev Postgres, a real session cookie, and
+  the real sealed handshake.
 - The RFC 8291 Appendix A vector reproduces byte-exactly — the strongest
   crypto signal; if the vector passes, iOS will decrypt.
 - Dispatcher vs an httptest fake relay: offline user → exactly one POST with
@@ -311,13 +315,45 @@ Requires real hardware:
   the services of Apple and Google, so the operator turns it on with
   `chalkctl push enable`. A fresh `init` writes it on. Each user still opts in
   for each device.
-- **Open for 65-4 or 65-5: rotation leaves stale rows.** After
+- **Resolved in 65-4: rotation leaves stale rows.** After
   `chalkctl push rotate-key --yes`, the rows of devices that have not opened
-  chalk again stay in `push_subscriptions`, and pushes to them fail. 65-4 or
-  65-5 must store the public key for each subscription, or delete the rows on
-  rotation.
+  chalk again stay in `push_subscriptions`, and pushes to them fail. 65-4
+  stores the public key for each subscription (see the next section).
 - **Restore carries the pair only as a whole.** If the archive holds one half,
   the pair that `init` generated stays.
+
+## Decisions from 65-4
+
+- **Frames.** `push_state`, `push_subscribe`, and `push_unsubscribe`. The
+  wire types are in `internal/proto/push.go` and `web/src/proto.ts`.
+- **The ack carries the state.** Each request gets `push_state_ack`,
+  `push_subscribe_ack`, or `push_unsubscribe_ack`. All three carry a
+  `PushStatePayload` (`enabled`, `vapid_public_key`, `subscribed`,
+  `endpoint`, `scope`, `key_current`). The page always gets the server's view
+  and does not infer it.
+- **Four error codes.** `push_disabled` (only `push_subscribe` answers with
+  it), `push_unsealed`, `push_no_session`, and `push_key_stale`.
+- **Sealed only.** A connection without the phase 83 sealed channel gets
+  `push_unsealed` for all three frames. A guest, or a connection without a
+  session token, gets `push_no_session`. The guest fence allowlist has none of
+  the frames, so a guest never reaches the handler.
+- **Session binding.** The connection holds the raw session token in process
+  memory. The upsert checks again that the session is live and not a guest.
+  A logout in another tab does not close the socket, so a later subscribe on
+  that socket gets `push_no_session`.
+- **Validation.** The endpoint must be https and at most 2048 bytes. `p256dh`
+  must be a 65-byte P-256 point. `auth` must be 16 bytes. The scope must be
+  `dms` or `all`. The browser must have used the current VAPID key, or the
+  answer is `push_key_stale`.
+- **The `vapid_key` decision.** The open point from 65-3 had two options:
+  store the key, or delete rows on rotation. 65-4 stores the key. Each row
+  holds the VAPID public key the browser subscribed with.
+  `UpsertPushSubscription` and `ListPushSubscriptionsForUsers` take a
+  `vapidKey` argument, and the list returns only the rows that match. A row
+  from before 0064 has the empty key and matches no key. The page sees
+  `key_current` false in the state and subscribes again.
+- **For 65-5.** The dispatcher must pass the current VAPID public key to
+  `ListPushSubscriptionsForUsers`. A wrong key lists no row.
 
 ## Risks
 

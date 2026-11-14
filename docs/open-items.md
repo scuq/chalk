@@ -389,12 +389,13 @@ can reach packaging). Open:
   Mac can keep one on a second display — the two-screen check in the phase
   doc is still to run.
 
-## Phase 65 — web push: IN PROGRESS, 65-1 to 65-3 built
+## Phase 65 — web push: IN PROGRESS, 65-1 to 65-4 built
 
 65-1 is built: migration 0063 and `internal/store/push.go`. 65-2 is built:
 the `internal/webpush` package. 65-3 is built: the push config, the VAPID key
-pair in `chalkctl`, and `chalkctl push`. Nothing sends a push yet. 65-4 onward
-is open. Record in [phases/PHASE-65-PUSH.md](phases/PHASE-65-PUSH.md). The plan
+pair in `chalkctl`, and `chalkctl push`. 65-4 is built: the three push frames
+on the sealed WebSocket and migration 0064. Nothing sends a push yet. 65-5
+onward is open. Record in [phases/PHASE-65-PUSH.md](phases/PHASE-65-PUSH.md). The plan
 was revised on 14 November 2026 after a review against the threat model. A
 subscription belongs to a login session and goes with it. The VAPID key and
 all subscription frames travel only over the WebSocket. Guests cannot
@@ -405,14 +406,13 @@ subscribe.
   cannot drop a push without risking a revoked subscription on iOS. A channel
   muted in chalk still pushes under scope `all`.
 - **Open:** all real-device checks (an iPhone on a deployed HTTPS instance,
-  Android Chrome, headed Chrome on localhost). No slice after 65-3 is built.
+  Android Chrome, headed Chrome on localhost). No slice after 65-4 is built.
   The iPhone check includes this: chalk shows under Settings > Notifications
   only after the permission prompt. It is not in the main list of apps.
 - **Open:** the `docs/threat-model.md` section on third parties, written in 65-5.
-- **Open for 65-4 or 65-5:** after `chalkctl push rotate-key --yes`, rows of
-  devices that have not opened chalk again stay in `push_subscriptions`, and
-  pushes to them fail. Store the public key for each subscription, or remove
-  the rows on rotation.
+- **Resolved in 65-4:** each subscription row holds the VAPID public key it
+  was made with, and the dispatcher lists only rows that match the current
+  key. 65-5 must pass the current key to `ListPushSubscriptionsForUsers`.
 
 ## Phase 93-3 — the resizable thread pane: designed, not started
 
@@ -517,3 +517,11 @@ Two deliberate exclusions:
   key, `init --force` turns the requirement on. 65-3 handled the same problem for
   push: `update` writes `PUSH_ENABLED=false` to the config file. No such
   backfill exists for `WRAP_SIG_REQUIRED`.
+- `TestInnerSealedChannelEndToEnd` in `test/integration/innerchan_test.go`
+  fails at HEAD with "no session". It dials without a session cookie, and the
+  WebSocket upgrade has required a session since 09b-5. The test in
+  `test/integration/push_ws_test.go` shows how to send the cookie.
+- `docs/wire-protocol.md` is stale. It lists `chalk_sid` and `presence_set`,
+  and it lacks `ping`, the `inner_*` frames, and the push frames. Do not
+  rewrite it from itself. `internal/proto` and `web/src/proto.ts` are the
+  authority.

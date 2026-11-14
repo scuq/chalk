@@ -122,6 +122,7 @@ func TestGuestFrameAllowlist(t *testing.T) {
 		"publish_identity", "publish_channel_key", "rotate_channel_key",
 		"gov_set_mode", "delete_message", "edit_message", "set_reactions",
 		"ephemeral_invite_mint", "ephemeral_invite_revoke",
+		"push_state", "push_subscribe", "push_unsubscribe", // 65-4
 	} {
 		if _, exists := frames[mustDeny]; !exists {
 			t.Errorf("expected frame constant %q to exist (test drifted from proto)", mustDeny)

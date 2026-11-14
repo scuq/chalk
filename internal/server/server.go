@@ -181,6 +181,7 @@ func NewServer(opts Options) (*Server, error) {
 	)
 	s.wsh = wsh                      // gov-1b-2: retained for the governance sweeper
 	wsh.guestStore = opts.GuestStore // 80-9: nil = guest connections refused
+	wsh.push = opts.Push             // 65-4: nil = push disabled
 	mux.Handle("GET /ws", wsh)
 	// 83-6: the server identity for the registration-time pin. Public by
 	// design (it is the key every client compares against); served over the
