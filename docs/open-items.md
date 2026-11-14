@@ -9,8 +9,8 @@ Latest release: **v0.12.0** — keep this in step with the topmost `## vX.Y.Z`
 heading in `CHANGELOG.md`. The `/release` skill updates it as part of cutting a
 release. A stale pointer is worse than none, because it still reads as current.
 
-Phase 137 is the newest work. It is in progress: 137-1 and 137-2 are built, and
-137-3 to 137-7 are not started.
+Phase 137 is the newest work. It is in progress: 137-1, 137-2, and 137-3 are built, and
+137-4 to 137-7 are not started.
 Phase 135 is built. All eight slices are built. The device checks are open.
 Phase 133 is built, with the voice room, and seven points of it are open.
 Phase 131 has two small open points.
@@ -20,10 +20,11 @@ phases are *planned, not started*.
 
 ## Phase 137 — phone polish: in progress, the device checks are open
 
-137-1 and 137-2 are built, record in [phases/PHASE-137-POLISH.md](phases/PHASE-137-POLISH.md).
+137-1, 137-2, and 137-3 are built, record in [phases/PHASE-137-POLISH.md](phases/PHASE-137-POLISH.md).
 On the phone, the composer is one outlined box. The field is full width and
 grows with the draft. The tools and send are in a row below it. Consecutive messages
-from one person group on the phone. 137-3 to 137-7 are not started.
+from one person group on the phone. The conversation rows are taller, an unread name
+is bold, and the unread dot sits under the time. 137-4 to 137-7 are not started.
 
 - **The 137-1 device checks are open.** The live probe used an iPhone 14
   emulation. Not tested on a device: the composer above the keyboard on an
@@ -32,9 +33,11 @@ from one person group on the phone. 137-3 to 137-7 are not started.
 - **The 137-2 device checks are open.** Not tested on a device: a long press
   on a follow-up row shows its time, grouping with timestamps turned off in
   settings, and the head row of a thread reply.
-- **137-3 to 137-7 are not started.** They are conversation
-  rows, list section rows, headers, empty states, and the list and chat
-  transition.
+- **The 137-3 device checks are open.** Not tested on a device: the pressed
+  shade shows and clears on a tap, a voice room row with people and an unread
+  dot, and the last row of the hidden shelf.
+- **137-4 to 137-7 are not started.** They are list section rows, headers,
+  empty states, and the list and chat transition.
 
 ## Phase 135 — phone: built, the device checks are open
 

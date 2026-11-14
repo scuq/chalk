@@ -189,7 +189,7 @@ export function ZuckerList({
       <li key={r.id}>
         <button
           type="button"
-          class={`chalk-zucker-row ${hidden ? "chalk-zucker-row--hidden" : ""}`}
+          class={`chalk-zucker-row ${hidden ? "chalk-zucker-row--hidden" : ""} ${r.unread ? "chalk-zucker-row--unread" : ""}`}
           onClick={() => {
             if (fired.current) {
               fired.current = false;
@@ -236,42 +236,46 @@ export function ZuckerList({
                 {fmtRelative(new Date(r.when), now)}
               </span>
             </span>
-            {occupants.length > 0 ? (
-              <span
-                class="chalk-zucker-row-occupants"
-                data-testid="zucker-voice-occupants"
-              >
-                {occupants.map((o) => (
-                  <span
-                    class="chalk-zucker-occupant"
-                    key={o.userID}
-                    data-user-id={o.userID}
-                  >
-                    <span class="chalk-zucker-occupant-name">{o.name}</span>
-                    {o.muted && <MicOffIcon />}
-                    {o.videoOn && <CamIcon />}
-                    {o.screenOn && <ScreenIcon />}
-                  </span>
-                ))}
-              </span>
-            ) : (
-              <span class="chalk-zucker-row-preview">
-                {r.preview !== null ? (
-                  <>
-                    {r.previewSender !== null && (
-                      <span class="chalk-zucker-row-sender">{r.previewSender}: </span>
-                    )}
-                    {r.preview}
-                  </>
-                ) : (
-                  <span class="chalk-zucker-row-empty">
-                    {r.isVoice ? "voice room" : "no messages yet"}
-                  </span>
-                )}
-              </span>
-            )}
+            {/* 137-3: the dot is in this line, not a column of the row, so the
+                time ends at the same edge on every row. */}
+            <span class="chalk-zucker-row-bottom">
+              {occupants.length > 0 ? (
+                <span
+                  class="chalk-zucker-row-occupants"
+                  data-testid="zucker-voice-occupants"
+                >
+                  {occupants.map((o) => (
+                    <span
+                      class="chalk-zucker-occupant"
+                      key={o.userID}
+                      data-user-id={o.userID}
+                    >
+                      <span class="chalk-zucker-occupant-name">{o.name}</span>
+                      {o.muted && <MicOffIcon />}
+                      {o.videoOn && <CamIcon />}
+                      {o.screenOn && <ScreenIcon />}
+                    </span>
+                  ))}
+                </span>
+              ) : (
+                <span class="chalk-zucker-row-preview">
+                  {r.preview !== null ? (
+                    <>
+                      {r.previewSender !== null && (
+                        <span class="chalk-zucker-row-sender">{r.previewSender}: </span>
+                      )}
+                      {r.preview}
+                    </>
+                  ) : (
+                    <span class="chalk-zucker-row-empty">
+                      {r.isVoice ? "voice room" : "no messages yet"}
+                    </span>
+                  )}
+                </span>
+              )}
+              {r.unread && <UnreadDot mention={r.mention} />}
+            </span>
           </span>
-          {r.unread && <UnreadDot mention={r.mention} />}
         </button>
       </li>
     );

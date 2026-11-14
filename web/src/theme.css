@@ -10739,11 +10739,14 @@ body.chalk-resizing-y .chalk-composer-resizer {
     min-height: 0;
   }
 
+  /* 137-3: the head, the pinned rows, the filter, the friend rows, and the
+     conversation rows all pad 16px (--chalk-s4) at the sides, so their text
+     and badges share one left edge. */
   .chalk-zucker-head {
     display: flex;
     align-items: center;
     gap: var(--chalk-s2);
-    padding: var(--chalk-s2) var(--chalk-s3);
+    padding: var(--chalk-s2) var(--chalk-s4);
     border-bottom: 1px solid var(--chalk-border);
   }
 
@@ -10776,7 +10779,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
     gap: var(--chalk-s2);
     width: 100%;
     min-height: 44px;
-    padding: 0 var(--chalk-s3);
+    padding: 0 var(--chalk-s4);
     background: none;
     color: var(--chalk-fg);
     border: none;
@@ -10812,7 +10815,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
     gap: var(--chalk-s2);
     width: 100%;
     min-height: 44px;
-    padding: 0 var(--chalk-s3) 0 calc(var(--chalk-s3) * 2);
+    padding: 0 var(--chalk-s4) 0 calc(var(--chalk-s4) * 2);
     background: none;
     color: var(--chalk-fg);
     border: none;
@@ -10837,7 +10840,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   }
 
   .chalk-zucker-friends-empty {
-    padding: var(--chalk-s2) calc(var(--chalk-s3) * 2);
+    padding: var(--chalk-s2) calc(var(--chalk-s4) * 2);
     color: var(--chalk-fg-dim);
     font-style: italic;
   }
@@ -10846,7 +10849,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
      input reuses the sidebar filter's styling. */
   .chalk-zucker-filter {
     flex-shrink: 0;
-    padding: var(--chalk-s2) var(--chalk-s3);
+    padding: var(--chalk-s2) var(--chalk-s4);
     border-bottom: 1px solid var(--chalk-border);
   }
 
@@ -10865,7 +10868,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
      the list. They share the rows' markup, so without this they inherit
      flex-grow from it and stand as a second growing child beside the
      conversation list -- which splits the column between them and squeezes a
-     one-room voice shelf down to less than the 56px its row needs, clipping it
+     one-room voice shelf down to less than the 64px its row needs, clipping it
      mid-line. A shelf is content-sized instead, up to its own 40vh cap, with
      its own scroll past that -- a live room with a long occupant list must
      not swallow the screen.
@@ -10890,8 +10893,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
     align-items: center;
     gap: var(--chalk-s2);
     width: 100%;
-    min-height: 56px;
-    padding: var(--chalk-s2) var(--chalk-s3);
+    min-height: 64px;
+    padding: var(--chalk-s2) var(--chalk-s4);
     background: none;
     color: var(--chalk-fg);
     border: none;
@@ -10904,6 +10907,22 @@ body.chalk-resizing-y .chalk-composer-resizer {
     user-select: none;
     -webkit-user-select: none;
     -webkit-touch-callout: none;
+    /* 137-3: no double-tap zoom, so a tap opens the chat with no delay. */
+    touch-action: manipulation;
+    /* 137-3: the :active rule below replaces the grey flash of iOS. */
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color var(--chalk-dur-fast);
+  }
+
+  /* 137-3: the pressed shade. It shows that the press reached the row. */
+  .chalk-zucker-row:active {
+    background: var(--chalk-bg-hover);
+  }
+
+  /* 137-3: the shelf draws its own bottom border. Without this rule, the
+     last row and the shelf draw two lines together. */
+  .chalk-zucker-rows--shelf li:last-child .chalk-zucker-row {
+    border-bottom: none;
   }
 
   .chalk-zucker-row-badge {
@@ -10937,6 +10956,15 @@ body.chalk-resizing-y .chalk-composer-resizer {
     color: var(--chalk-fg-bright);
   }
 
+  /* 137-3: an unread name is bold, and a read name keeps the regular weight.
+     Every bundled font has a 400 face and a 700 face only, so a weight of 600
+     renders bold and would make every name look unread. The name still leads
+     the row through its base size and --chalk-fg-bright, against the small,
+     muted preview. */
+  .chalk-zucker-row--unread .chalk-zucker-row-name {
+    font-weight: 700;
+  }
+
   .chalk-zucker-row-when {
     flex: 0 0 auto;
     font-size: var(--chalk-size-small);
@@ -10944,7 +10972,19 @@ body.chalk-resizing-y .chalk-composer-resizer {
     white-space: nowrap;
   }
 
+  /* 137-3: the preview (or the occupants) and the unread dot share one line.
+     The dot was a column of its own, so an unread row ended its time about
+     22px further left than a read row. Now every row ends its time at the
+     same edge, and the dot sits under it. */
+  .chalk-zucker-row-bottom {
+    display: flex;
+    align-items: center;
+    gap: var(--chalk-s2);
+    min-width: 0;
+  }
+
   .chalk-zucker-row-preview {
+    flex: 1 1 auto;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -10963,6 +11003,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
      lines tall. Row gap is tighter than column gap so a wrapped second line
      still reads as one block. */
   .chalk-zucker-row-occupants {
+    flex: 1 1 auto;
     display: flex;
     flex-wrap: wrap;
     align-items: center;

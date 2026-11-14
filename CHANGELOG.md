@@ -19,6 +19,7 @@ The engineering-level history (which slice shipped what) lives in
 ### Changed
 - On a phone, the message field now uses the full width and grows as you type. The tools and the send button sit in a row beneath it.
 - On a phone, consecutive messages from one person within five minutes now show the name and the time only once. A long press on a message shows its time. Message text is slightly larger.
+- On a phone, the conversation list has taller rows. The name of a conversation with unread messages is bold. The unread mark sits under the time, so all times line up. A row shows a shade while you press it.
 
 ### Fixed
 - After a short connection loss during a call, chalk keeps the microphone and the camera. An iPhone does not ask for permission again when the app returns from the background.

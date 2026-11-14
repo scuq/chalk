@@ -1,6 +1,6 @@
 # Phase 137 — phone polish from the external design review
 
-**Status:** in progress. 137-1 and 137-2 are built (2026-11-14). 137-3 to 137-7 are not started. The device checks of 137-1 and 137-2 are open, in the manual checklist.
+**Status:** in progress. 137-1, 137-2, and 137-3 are built (2026-11-14). 137-4 to 137-7 are not started. The device checks of 137-1, 137-2, and 137-3 are open, in the manual checklist.
 **Tags:** `#composer`, `#mobile` → `tools/where.sh -g composer`
 
 ## The problem
@@ -80,10 +80,33 @@ Measured in a headed iPhone 14 emulation:
 
 ### 137-3 Conversation rows
 
-- `ZuckerList.tsx` adds the class `chalk-zucker-row--unread` when a row is unread.
-- A row is at least 64 px high, has 16 px of horizontal padding, and has an `:active` state. The name is bold, and bolder when unread.
-- The head, the pinned rows, and the filter get the same 16 px padding, so all rows share one left edge.
-- The last row of a shelf loses its bottom border, because the shelf has one.
+Before 137-3, the unread dot was the last child of the row button, a column of its own.
+On an unread row, the time ended about 22 px further left than on a read row.
+Now the dot sits at the end of the preview line, under the time, and every row ends its time at the same edge.
+
+- `ZuckerList.tsx` adds the class `chalk-zucker-row--unread` to an unread row.
+- A new `<span class="chalk-zucker-row-bottom">` holds the preview (or the voice occupants) and the unread dot. It is a flex row. The preview and the occupants take `flex: 1 1 auto`.
+- A row is at least 64 px high (it was 56 px). Its horizontal padding is 16 px, `--chalk-s4` (it was `--chalk-s3`).
+- A row has `touch-action: manipulation`, so a double tap does not zoom and a tap has no delay.
+- `-webkit-tap-highlight-color` is transparent, so the grey flash of iOS does not show. A pressed row (`:active`) has `--chalk-bg-hover` as its background, with a `--chalk-dur-fast` transition.
+- An unread name has `font-weight: 700`. A read name keeps the regular weight and its color.
+- The head, the pinned rows, the filter, the friend rows, and the "no friends yet" line have the same 16 px edge. The friend rows keep their double indent, now 2 x `--chalk-s4`.
+- The last row of a shelf has no bottom border, because the shelf draws one. The two lines no longer double up.
+
+The plan gave a read name a weight of 600.
+That was dropped.
+Every bundled font has only a 400 face and a 700 face. The fonts are Hack, JetBrains Mono, Fira Code, and Cascadia Code. A weight of 600 renders bold.
+Every name would look unread.
+The name still leads its row through the base size and `--chalk-fg-bright`, against the small, muted preview.
+
+Measured in a headed iPhone 14 emulation, at 390 px and at 320 px:
+
+- Every row is 64 px high.
+- The head title, the pinned labels, and the row badges share one left edge.
+- An unread name has weight 700. A read name has weight 400.
+- A long channel name ends in an ellipsis.
+- The times and the dots end at the same x position on every row.
+- There is no horizontal overflow.
 
 ### 137-4 List section rows
 
@@ -136,7 +159,7 @@ A live swipe-back drag exists (`web/src/chat/use-swipe-back.ts`).
 |---|---|---|
 | 137-1 | built | Composer: full-width field, tools row below |
 | 137-2 | built (2026-11-14) | Message grouping and phone typography |
-| 137-3 | not started | Conversation rows |
+| 137-3 | built (2026-11-14) | Conversation rows |
 | 137-4 | not started | List section rows |
 | 137-5 | not started | Headers |
 | 137-6 | not started | Empty states |
@@ -146,6 +169,7 @@ A live swipe-back drag exists (`web/src/chat/use-swipe-back.ts`).
 
 - Only a real iPhone PWA shows the keyboard behavior. The device checks of 137-1 are open.
 - The device checks of 137-2 are open, in the manual checklist.
+- The device checks of 137-3 are open, in the manual checklist.
 - The index row of phase 136 links `docs/phases/PHASE-136-IOS.md`. This phase does not change it.
 
 ## Manual checklist
@@ -161,3 +185,6 @@ A live swipe-back drag exists (`web/src/chat/use-swipe-back.ts`).
 - [ ] 137-2: a phone. Long-press a follow-up row. The menu shows the full time of that message as its first line, inside the screen.
 - [ ] 137-2: a phone, with timestamps turned off in settings. Messages still group, and a long press still shows the time.
 - [ ] 137-2: a phone. Open a thread. The reply head row shows its name and time, and the replies group as in a channel.
+- [ ] 137-3: a phone. Press a conversation row and hold. The row shows the pressed shade. The shade clears when you lift your finger or a tap opens the chat.
+- [ ] 137-3: a phone, with a voice room that has people in it and an unread message. The row shows the names of the people, and the unread dot is at the right end of that line, under the time.
+- [ ] 137-3: a phone, with the hidden shelf open. The last row of the shelf has no doubled bottom line.
