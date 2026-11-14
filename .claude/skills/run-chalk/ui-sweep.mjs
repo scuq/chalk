@@ -210,7 +210,9 @@ async function register(page, username) {
   await page.waitForSelector("[data-state='open']", { timeout: 30000 });
   const whatsNew = page.locator("[data-testid='whats-new-dismiss']");
   await whatsNew.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
-  if (await whatsNew.isVisible().catch(() => false)) await whatsNew.click();
+  // The locator handler for the what's-new backdrop can also close the note during a click.
+  // A plain click then waits 30 s for a button that is gone, so send the click event directly.
+  if (await whatsNew.isVisible().catch(() => false)) await whatsNew.dispatchEvent('click').catch(() => {});
   await page.waitForTimeout(1000);
   log('registered', username);
 }

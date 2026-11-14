@@ -344,8 +344,8 @@ holds only in-memory socket state; Postgres is the source of truth.
 In one breath: you log in with a password and a 6-digit TOTP code, you hold a
 separate 24-word phrase that is the seed of your cryptographic identity, and
 that identity locks your messages so only the people in a channel can read
-them. **All of it is live — messages and attachments are end-to-end encrypted,
-and the server stores only ciphertext.** Here is every piece in plain language.
+them. **Every piece is live except the one marked not built. Messages and
+attachments are end-to-end encrypted, and the server stores only ciphertext.** Here is every piece in plain language.
 
 | Piece | What it does, plainly | Status |
 |---|---|---|
@@ -357,11 +357,12 @@ and the server stores only ciphertext.** Here is every piece in plain language.
 | PBKDF2-HMAC-SHA512 | Stretches those 24 words into a 64-byte seed (the standard BIP-39 step). | live |
 | HKDF-SHA256 | Splits one seed into independent keys, so the signing key and the encryption key never overlap. | live |
 | X25519 | Your encryption keypair. Two people's X25519 keys can agree on a shared secret without ever sending it — that secret wraps the keys that lock a channel's messages. | live |
-| Ed25519 | Your signing keypair. Proves "this identity really is mine," and signs the X25519 key so the server can't quietly swap it (the self-signature). | live |
-| Self-signature | Your Ed25519 key signs your X25519 key. When someone fetches your identity, they check this signature, so a malicious server can't substitute a fake encryption key undetected. | live |
+| Ed25519 | Your signing keypair. Proves "this identity really is mine," and signs the X25519 key (the self-signature). It also signs every message, edit and reaction. | live |
+| Self-signature | Your Ed25519 key signs your X25519 key. When someone fetches your identity, they check this signature. A substituted channel key is detected only where `CHALK_WRAP_SIG_REQUIRED` is on. It is on by default for a new deployment, and an older deployment must run `chalkctl wrapsig enable`. A server that lies at the first fetch of your identity gets its key pinned, and only the picture-word check detects that. | live |
 | Space keys + AES-256-GCM | Each channel has one shared symmetric key that actually encrypts the messages, edits, reactions and attachments. It's handed to each member by wrapping it under their X25519 public key, and rotated when someone is removed. | live |
 | Picture-word verification | An out-of-band check (you compare the same picture/words with someone) to be sure no one is sitting in the middle swapping keys. | live |
-| Phrase rotation + recovery | You can roll your encryption phrase to a fresh one; old keys are re-wrapped so you keep your history, with an opt-out for when you're rotating because the old phrase leaked. | live |
+| Recovery phrase rotation | You can rotate the recovery phrase. It needs your password and a current TOTP code. | live |
+| Encryption phrase rotation | The app has no screen to rotate the encryption phrase yet. The code to publish a rotated identity exists, and nothing calls it. | not built |
 | Signed voice fingerprints | In a call, each peer's DTLS fingerprint is signed with their Ed25519 key and checked against their published identity. A mismatch aborts that peer instead of degrading to an unverified call. | live |
 | TLS 1.3 | Encrypts the connection between your browser and the server, like every HTTPS site. | live |
 
@@ -378,7 +379,7 @@ full reasoning, threat model, and recovery design live in
 
 - [docs/architecture.md](docs/architecture.md) — system overview
 - [docs/wire-protocol.md](docs/wire-protocol.md) — the `chalk.v1` WebSocket protocol
-- [docs/threat-model.md](docs/threat-model.md) — current state + planned guarantees
+- [docs/threat-model.md](docs/threat-model.md) — the trust model, and what holds today
 - [docs/browser-support.md](docs/browser-support.md) — supported engines + minimum versions
 - [docs/deployment.md](docs/deployment.md) — running it in production with `chalkctl`
 - [docs/theming.md](docs/theming.md), [docs/notification-sounds.md](docs/notification-sounds.md) — client customization
