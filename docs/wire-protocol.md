@@ -100,6 +100,54 @@ These codes belong to the push frames:
 | `push_no_session` | The connection has no login session, or the session ended |
 | `push_key_stale` | The browser subscribed with a key that is not the current key. Subscribe again with the key from `push_state` |
 
+## Reminder wakes (phase 87-7)
+
+The server holds one wake record for each pending reminder of a user who has web push on.
+A record is a random reminder ID and a due time.
+It holds no message, no channel, and no text.
+The frame exists only on a sealed connection.
+A guest connection and a connection without a login session cannot use it.
+
+| Type | Payload | Notes |
+|---|---|---|
+| `reminder_wakes_set` | `ReminderWakesSetPayload` | Replaces the whole wake set of the user |
+
+The server answers with a `reminder_wakes_set_ack` frame.
+The ack has the `ref` of the request.
+Its payload is a `ReminderWakesAckPayload`.
+
+`ReminderWakesSetPayload` fields:
+
+| Field | Meaning |
+|---|---|
+| `wakes` | A list of at most 25 records. An empty list deletes the stored set |
+
+Each record of `wakes` has these fields:
+
+| Field | Meaning |
+|---|---|
+| `id` | The random UUID of the reminder. It must occur once in the list |
+| `due_at` | The due time in milliseconds since the Unix epoch. It must be greater than 0 and less than 253402300800000 |
+
+`ReminderWakesAckPayload` fields:
+
+| Field | Meaning |
+|---|---|
+| `stored` | The number of records that the server holds after the frame. It is 0 if the user has no push subscription |
+
+If the user has no push subscription, the server deletes the set and stores nothing.
+The server deletes the set of a user when the last push subscription of the user goes away.
+A refused frame leaves the stored set unchanged.
+The server answers a refused frame with an `error` frame.
+These codes belong to the frame:
+
+| Code | Meaning |
+|---|---|
+| `push_unsealed` | The connection has no sealed channel |
+| `push_no_session` | The connection is a guest connection or has no login session, or the session ended |
+| `push_disabled` | Push is off on the server |
+| `bad_payload` | The list has more than 25 records, an `id` is not a UUID, an `id` occurs twice, or a `due_at` is out of range |
+
 ### Push plaintext
 
 The server sends each push to the push service as an RFC 8291 encrypted body.

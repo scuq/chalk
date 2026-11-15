@@ -489,7 +489,7 @@ subscribe.
   was made with, and the dispatcher lists only rows that match the current
   key. 65-5 must pass the current key to `ListPushSubscriptionsForUsers`.
 
-## Phase 87 — message reminders: IN PROGRESS, 87-1 to 87-6 built
+## Phase 87 — message reminders: IN PROGRESS, 87-1 to 87-7 built
 
 Message reminders bring one message back later. 87-1 is built: the pure rules
 in `web/src/chat/reminders.ts`, with tests. 87-2 is built: the sealed prefs
@@ -507,10 +507,11 @@ chalk is open, and at the next load for a reminder that became due while chalk
 was closed, a due reminder gets a dot on the reminders entry, shows as due
 in the list, and counts in the tab title and the app badge. 87-6 added the sound, the
 banner, and a row for reminders in the notification settings, for a reminder
-that becomes due while chalk is open. Slices 87-7 to 87-9 are open. 87-7 and
-87-8 add the wake record and the push for a closed app, and 87-9 adds the
-threat-model and wire-protocol records. Until 87-8 nothing fires while chalk is
-closed. The reminder plays the cue of a new message. A cue of its own for a
+that becomes due while chalk is open. 87-7 added the wake record: the table
+`reminder_wakes`, the frame `reminder_wakes_set`, and the client send. Nothing
+reads the table yet. Slices 87-8 and 87-9 are open. 87-8 adds the sweep loop and
+the push for a closed app, and 87-9 adds the threat-model record. Until 87-8
+nothing fires while chalk is closed. The reminder plays the cue of a new message. A cue of its own for a
 reminder is open, and it needs a new file in each theme. The browser check of 87-3 and the
 check of 87-4 are done on a desktop viewport. These checks stay open:
 
@@ -522,6 +523,15 @@ check of 87-4 are done on a desktop viewport. These checks stay open:
 - 87-4: a reminder whose channel is gone.
 - 87-5: the app badge of an installed chalk, and the dot on the phone head button.
 - 87-6: the sound at the due time, the banner close from another device, the settings row, do-not-disturb, and the privacy screen.
+
+These limits of 87-7 stay open:
+
+- The wake set of a user is not created when another device subscribes to push,
+  until one device sends the frame again at the next welcome or change.
+- The rows of a user in the soft-delete state stay until the purge. The sweep of 87-8 must
+  skip them.
+- The due times are visible to the server and in the database for a user with
+  push on. 87-9 records this in `docs/threat-model.md`.
 
 Record in
 [phases/PHASE-87-REMINDERS.md](phases/PHASE-87-REMINDERS.md).

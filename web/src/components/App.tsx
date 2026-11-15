@@ -30,7 +30,13 @@ import { categoryForMessage } from "../notify/classify";
 import { publishNotifyEvent, subscribeNotifyEvents } from "../notify/bus";
 import { badgeCount } from "../notify/badge";
 import { notifyBanners } from "../notify/banners";
-import { dropBrowserSubscription, installPushOpenListener, reconcilePush } from "../notify/push";
+import {
+  dropBrowserSubscription,
+  installPushOpenListener,
+  onPushSubscribed,
+  reconcilePush,
+} from "../notify/push";
+import { wakeKey, wakeSet } from "../chat/reminder-wake"; // 87-7
 import { parseOpenURL } from "../sw-logic";
 import { titleController } from "../notify/title";
 import { actionsFor, resolvePriority, type RulesConfig } from "../notify/rules";
@@ -100,6 +106,9 @@ import {
   TypePrefsGet,
   TypePrefsGetAck,
   TypePrefsSet, // Phase 9.7b
+  TypeReminderWakesSet, // 87-7
+  type ReminderWakesAckPayload,
+  type ReminderWakesSetPayload,
   TypePrefsSetAck,
   TypePrefsChanged,
   // 33-1: read cursors.
@@ -2055,6 +2064,48 @@ export function App() {
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [remindersUID, remindersSettled, reminders]);
+  // 87-7: the wake set. The server holds the ID and the due time of each
+  // pending reminder, so it can send a push while chalk is closed (87-8). The
+  // page sends the full set after each welcome, after each change of the set,
+  // and after this session subscribes to push. It sends nothing if the server
+  // has push off, the connection is not sealed, or the first merge with the
+  // server blob is not complete. wakeSentRef holds the key of the last set
+  // that this connection sent, so an equal set is not sent twice. A failed
+  // send is tried again after 15 s.
+  const wakeSentRef = useRef<string | null>(null);
+  const [wakeEpoch, setWakeEpoch] = useState(0);
+  useEffect(
+    () =>
+      onPushSubscribed(() => {
+        wakeSentRef.current = null;
+        setWakeEpoch((n) => n + 1);
+      }),
+    [],
+  );
+  const pushEnabled = state.authConfig?.push_enabled ?? false;
+  useEffect(() => {
+    if (state.wsState !== "open") {
+      wakeSentRef.current = null;
+      return undefined;
+    }
+    if (!remindersUID || !remindersSettled || !pushEnabled) return undefined;
+    const c = clientRef.current;
+    if (!c || !c.isSealed()) return undefined;
+    const wakes = wakeSet(reminders);
+    const key = wakeKey(wakes);
+    if (key === wakeSentRef.current) return undefined;
+    wakeSentRef.current = key;
+    let retry: number | undefined;
+    c.request<ReminderWakesSetPayload, ReminderWakesAckPayload>(TypeReminderWakesSet, {
+      wakes,
+    }).catch((err) => {
+      console.warn("reminder wakes: send failed:", err);
+      if (wakeSentRef.current !== key) return;
+      wakeSentRef.current = null;
+      retry = window.setTimeout(() => setWakeEpoch((n) => n + 1), 15_000);
+    });
+    return () => window.clearTimeout(retry);
+  }, [state.wsState, remindersUID, remindersSettled, pushEnabled, reminders, wakeEpoch]);
   // 87-6: the banner of a reminder closes when the reminder is no longer
   // fired and open: done or snoozed, on this device or on another one.
   const firedBannerIDs = useRef<Set<string>>(new Set());

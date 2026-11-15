@@ -217,6 +217,18 @@ func wantState(t *testing.T, f proto.Frame, typ string) proto.PushStatePayload {
 	return st
 }
 
+func wantWakes(t *testing.T, f proto.Frame) int {
+	t.Helper()
+	if f.Type != proto.TypeReminderWakesSetAck {
+		t.Fatalf("want %s, got %s %s", proto.TypeReminderWakesSetAck, f.Type, f.Payload)
+	}
+	var ack proto.ReminderWakesAckPayload
+	if err := f.DecodePayload(&ack); err != nil {
+		t.Fatal(err)
+	}
+	return ack.Stored
+}
+
 func TestPushFramesEndToEnd(t *testing.T) {
 	h := startPushServer(t)
 
@@ -242,6 +254,17 @@ func TestPushFramesEndToEnd(t *testing.T) {
 	}
 	wantErr(t, pc.call(proto.TypePushSubscribe, sub), proto.ErrCodePushKeyStale)
 
+	// 87-7: a plaintext connection cannot set reminder wakes, and a user
+	// without a subscription stores none.
+	wakes := proto.ReminderWakesSetPayload{Wakes: []proto.ReminderWake{
+		{ID: uuid.NewString(), DueAt: time.Now().Add(time.Hour).UnixMilli()},
+		{ID: uuid.NewString(), DueAt: time.Now().Add(48 * time.Hour).UnixMilli()},
+	}}
+	wantErr(t, plain.call(proto.TypeReminderWakesSet, wakes), proto.ErrCodePushUnsealed)
+	if n := wantWakes(t, pc.call(proto.TypeReminderWakesSet, wakes)); n != 0 {
+		t.Fatalf("wakes without a subscription: stored %d", n)
+	}
+
 	sub.VAPIDPublicKey = h.vapid
 	st = wantState(t, pc.call(proto.TypePushSubscribe, sub), proto.TypePushSubscribeAck)
 	if !st.Subscribed || !st.KeyCurrent || st.Endpoint != sub.Endpoint || st.Scope != "dms" {
@@ -252,9 +275,28 @@ func TestPushFramesEndToEnd(t *testing.T) {
 		t.Fatalf("stored row: %v %+v", err, row)
 	}
 
+	// 87-7: the wake set is stored now that the user has a subscription, and
+	// the frame is safe to send twice.
+	if n := wantWakes(t, pc.call(proto.TypeReminderWakesSet, wakes)); n != 2 {
+		t.Fatalf("wakes with a subscription: stored %d", n)
+	}
+	if n := wantWakes(t, pc.call(proto.TypeReminderWakesSet, wakes)); n != 2 {
+		t.Fatalf("wakes sent twice: stored %d", n)
+	}
+	wantErr(t, pc.call(proto.TypeReminderWakesSet, proto.ReminderWakesSetPayload{
+		Wakes: []proto.ReminderWake{{ID: "not-a-uuid", DueAt: 5}},
+	}), proto.ErrCodeBadPayload)
+	if got, err := h.st.ListReminderWakes(ctx(t), h.userID); err != nil || len(got) != 2 {
+		t.Fatalf("stored wakes after a refused frame: %v %+v", err, got)
+	}
+
 	st = wantState(t, pc.call(proto.TypePushUnsubscribe, nil), proto.TypePushUnsubscribeAck)
 	if st.Subscribed {
 		t.Fatalf("after unsubscribe: %+v", st)
+	}
+	// 87-7: the wake set went with the last subscription.
+	if got, err := h.st.ListReminderWakes(ctx(t), h.userID); err != nil || len(got) != 0 {
+		t.Fatalf("stored wakes after unsubscribe: %v %+v", err, got)
 	}
 
 	// Logout in another tab ends the session. The open socket cannot

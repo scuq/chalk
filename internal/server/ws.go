@@ -864,6 +864,8 @@ func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 			h.sendPong(ctx, c, f.Ref)
 		case proto.TypePushState, proto.TypePushSubscribe, proto.TypePushUnsubscribe: // 65-4
 			h.handlePush(ctx, c, conn, f)
+		case proto.TypeReminderWakesSet: // 87-7
+			h.handleReminderWakesSet(ctx, c, conn, f)
 
 		default:
 			h.sendError(ctx, c, f.Ref, proto.ErrCodeUnknownType,

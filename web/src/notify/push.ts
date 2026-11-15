@@ -233,7 +233,24 @@ function browserSub(sub: PushSubscription | null): BrowserSub | null {
 async function upload(client: PushClient, sub: PushSubscription, scope: PushScope, key: string): Promise<PushStatePayload> {
   const payload = subscribePayload(sub.toJSON(), scope, key);
   if (!payload) throw new Error("push subscription has no keys");
-  return client.request<PushSubscribePayload, PushStatePayload>(TypePushSubscribe, payload);
+  const state = await client.request<PushSubscribePayload, PushStatePayload>(TypePushSubscribe, payload);
+  for (const fn of subscribedListeners) fn();
+  return state;
+}
+
+const subscribedListeners = new Set<() => void>();
+
+/**
+ * onPushSubscribed calls fn each time the server stores a subscription of
+ * this session. It returns the function that removes fn. The reminder wake
+ * set uses it (87-7): the server holds that set only for a user with a
+ * subscription, so the page sends the set again after a subscribe.
+ */
+export function onPushSubscribed(fn: () => void): () => void {
+  subscribedListeners.add(fn);
+  return () => {
+    subscribedListeners.delete(fn);
+  };
 }
 
 async function freshSub(reg: ServiceWorkerRegistration, key: string): Promise<PushSubscription> {

@@ -2,15 +2,15 @@
 
 A way to say "not now, but don't let me lose this" about a single message,
 without answering it, copying it somewhere, or leaving the channel unread as a
-to-do list. Designed against v0.7.2. **IN PROGRESS: slices 87-1 to 87-6 are
-built, and slices 87-7 to 87-9 are open.** The design was written on 4 August 2026 and
+to-do list. Designed against v0.7.2. **IN PROGRESS: slices 87-1 to 87-7 are
+built, and slices 87-8 and 87-9 are open.** The design was written on 4 August 2026 and
 revised on 15 November 2026. The revision changed the presets and added a push
 to a closed app. Each later slice starts with a new check of the code and a
 new decision from the user.
 
-**Status:** in progress, 87-1 to 87-6 built, design revised on 15 November 2026.
+**Status:** in progress, 87-1 to 87-7 built, design revised on 15 November 2026.
 **Tag:** `#reminders` → `tools/where.sh -g reminders` (it finds this file and
-the files of slices 87-1 to 87-6).
+the files of slices 87-1 to 87-7).
 
 ## The problem
 
@@ -114,8 +114,8 @@ What follows from it:
   Phase 86's reserved `migrations/0051_message_ties.sql` stays reserved. In
   those slices phase 87 does not take a migration number because it does not have
   a table, and `go build` output is byte-identical before and after them. Slices
-  87-7 and 87-8 add migration 0065, one frame, and a sweep loop (see *The wake
-  record on the server*).
+  87-7 added migration 0065 and one frame. 87-8 adds a sweep loop (see *The
+  wake record on the server*).
 - **The prefs key change is opaque to the server**, indistinguishable from a
   notification-rule edit. The blob does not tell the server which message a
   reminder points at, or when it is due.
@@ -181,12 +181,40 @@ record (a due time with a random ID). Slices 87-7 and 87-8 build it.
 - The record holds the user ID, the reminder ID, and the due time.
 - The reminder ID is a random UUID from the client. It names no message and no
   channel.
-- The client sends the full set of wake records in one frame, at each welcome
-  and after each change.
+- The table is `reminder_wakes`. Its primary key is the user ID and the
+  reminder ID. It has an index on the due time, and the user ID has a foreign
+  key with `ON DELETE CASCADE`.
+- The client sends the full set of wake records in one `reminder_wakes_set`
+  frame. The payload is `{wakes: [{id, due_at}]}`, with `due_at` in epoch
+  milliseconds. The server answers with `reminder_wakes_set_ack` and
+  `{stored}`.
+- The client sends the frame after each welcome, after each change of the set,
+  and after this session subscribes to push. It sends only if `push_enabled`
+  is true, the connection is sealed, and the first merge with the server blob
+  is complete. An equal set is not sent twice on one connection. A failed send
+  is tried again after 15 seconds.
 - The server replaces the stored set with that frame. This makes the frame
-  idempotent (safe to send twice).
+  idempotent (safe to send twice). The cap is 25 records.
 - The server stores the set only if the user has one or more push
-  subscriptions. If not, it deletes the set.
+  subscriptions. If not, it deletes the set and answers `stored` 0. It does
+  not check that the session of a subscription is live.
+- The server refuses the frame without a sealed channel (`push_unsealed`), for
+  a guest or a connection without a login session (`push_no_session`), and
+  with push off (`push_disabled`). It answers `bad_payload` for more than 25
+  records, an ID that is not a UUID, a repeated ID, or a due time out of
+  range. A refused frame leaves the stored set unchanged.
+- A deferred constraint trigger on `push_subscriptions` (after delete) deletes
+  the wake set of a user when the last subscription of the user goes away. The
+  trigger covers each path: the unsubscribe frame, the prune of a dead
+  endpoint, and the cascade from a session that ended (logout, password
+  change, recovery reset, administrator block, expiry sweep). It is deferred to
+  the commit, so a subscribe that replaces the only subscription in one
+  transaction does not empty the set. No Go code hooks the session-end paths.
+- `Store.ReplaceReminderWakes` runs in one transaction. It locks the user row,
+  which orders concurrent replaces. It takes a share lock on the subscription
+  rows of the user, so a concurrent delete of the last one waits and its
+  trigger then sees the new set. It then deletes the set, and inserts the new
+  one only if the user has a subscription.
 
 The last rule makes the push opt-in of phase 65 the opt-in for this record. A
 user without push on any device leaves no due time in the database. On an
@@ -657,8 +685,29 @@ end.
     title blinks. Nothing happens while chalk is closed. Slices 87-7 and 87-8
     build that.
   - The browser check is not done. See *Verification, when built*.
-- **87-7 — the wake record.** Migration 0065, the store methods, the wake frame,
-  and the reconcile at welcome. Server code.
+- **87-7 — the wake record. BUILT.** The files are
+  `migrations/0065_reminder_wakes.sql`, `internal/store/reminder_wake.go`,
+  `internal/proto/reminder.go`, `internal/server/reminder_ws.go`,
+  `internal/server/ws.go`, `web/src/chat/reminder-wake.ts`,
+  `web/src/proto.ts`, `web/src/notify/push.ts`, and
+  `web/src/components/App.tsx`.
+  - The table, the frame, the error codes, the trigger, and the times at which
+    the client sends are in *The wake record on the server*.
+  - `wakeSet(list)` gives the ID and the due time of each reminder that is not
+    fired and not done. `onPushSubscribed` in `push.ts` lets `App.tsx` send the
+    set again after this session subscribes.
+  - Nothing reads the table yet. The sweep loop and the push are slice 87-8.
+    A user sees no change, so the slice has no changelog entry.
+  - Known limit: the wake set of a user is not created when another device
+    subscribes to push. It is created when a device sends the frame again, at
+    the next welcome or the next change.
+  - Known limit: a user who is soft-deleted keeps rows until the purge. The
+    sweep of 87-8 must skip them.
+  - Known limit: for a user with push on, the due times are visible to the
+    server and in the database. Slice 87-9 records this in
+    `docs/threat-model.md`.
+  - The push reconcile of phase 65 drops a server subscription that the browser
+    does not have. That empties the wake set through the same trigger.
 - **87-8 — the push.** The sweep loop, the `reminder` push kind, the service
   worker text, and the click-to-jump path. Server code.
 - **87-9 — the record.** `docs/tags.md`, `docs/phase-log.md`,
@@ -668,7 +717,8 @@ end.
   `docs/tags.md` and the row in `docs/phase-log.md`.
 
 Slices 87-1 to 87-6 give a reminder that works while chalk is open. Slices 87-7
-and 87-8 add the closed app.
+and 87-8 add the closed app. Slice 87-7 stores the wake set, and slice 87-8
+sends the push.
 
 ## What each piece would reuse
 
@@ -828,3 +878,16 @@ These checks of 87-6 are open:
 - **Settings** > notifications has a "reminders" row.
 - Do-not-disturb stops the sound, the banner, and the blink.
 - The privacy screen stops the sound.
+
+The checks of 87-7 passed on 15 November 2026. The Go tests ran against
+Postgres: the store test has 7 subtests, which include the trigger paths, and
+the end-to-end frame test passed. A browser probe ran against a dev stack with
+push on:
+
+- A user with no subscription stored 0 records.
+- With a subscription, a change of the set stored the set.
+- A snooze moved the due time.
+- A reload sent the set again.
+- A reminder that fired left the set.
+- Done removed the record of the reminder.
+- Deletion of the last subscription emptied the set.

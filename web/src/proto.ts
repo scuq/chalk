@@ -659,6 +659,28 @@ export const ErrCodePushUnsealed = "push_unsealed";
 export const ErrCodePushNoSession = "push_no_session";
 export const ErrCodePushKeyStale = "push_key_stale";
 
+// ---- Phase 87-7: reminder wakes (internal/proto/reminder.go) ----------
+// Only on a sealed connection. Errors use the push error codes.
+
+export const TypeReminderWakesSet = "reminder_wakes_set";
+export const TypeReminderWakesSetAck = "reminder_wakes_set_ack";
+
+/** One wake record: the random ID of a reminder and its due time in epoch milliseconds. */
+export interface ReminderWake {
+  id: string;
+  due_at: number;
+}
+
+/** The full wake set of the user. An empty list deletes the stored set. */
+export interface ReminderWakesSetPayload {
+  wakes: ReminderWake[];
+}
+
+/** stored is 0 if the user has no push subscription. */
+export interface ReminderWakesAckPayload {
+  stored: number;
+}
+
 /** A browser PushSubscription; p256dh and auth are base64url. */
 export interface PushSubscribePayload {
   endpoint: string;
