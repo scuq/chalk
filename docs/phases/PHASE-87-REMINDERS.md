@@ -2,15 +2,15 @@
 
 A way to say "not now, but don't let me lose this" about a single message,
 without answering it, copying it somewhere, or leaving the channel unread as a
-to-do list. Designed against v0.7.2. **IN PROGRESS: slices 87-1 to 87-4 are
-built, and slices 87-5 to 87-9 are open.** The design was written on 4 August 2026 and
+to-do list. Designed against v0.7.2. **IN PROGRESS: slices 87-1 to 87-5 are
+built, and slices 87-6 to 87-9 are open.** The design was written on 4 August 2026 and
 revised on 15 November 2026. The revision changed the presets and added a push
 to a closed app. Each later slice starts with a new check of the code and a
 new decision from the user.
 
-**Status:** in progress, 87-1 to 87-4 built, design revised on 15 November 2026.
+**Status:** in progress, 87-1 to 87-5 built, design revised on 15 November 2026.
 **Tag:** `#reminders` → `tools/where.sh -g reminders` (it finds this file and
-the files of slices 87-1 to 87-4).
+the files of slices 87-1 to 87-5).
 
 ## The problem
 
@@ -312,12 +312,15 @@ away.
 
 ## Firing
 
-**A module singleton with its own clock**, on `chat/typing-store.ts`'s shape and
-for its stated reason: the reducer is pure and cannot hold a timer, and driving
-expiry from a dispatch would rebuild `AppState` on every tick forever. `sweep(nowMs)`
-takes the clock as a parameter — the single thing that makes it testable without
-fake timers — and the interval only runs while something is pending, `unref()`'d
-so `node --test` does not hang.
+**An effect in `App.tsx` with two pure helpers.** The reducer is pure and cannot
+hold a timer, and driving expiry from a dispatch would rebuild `AppState` on
+every tick forever, so the timer lives in an effect. Slice 87-5 built it this
+way and not as a module singleton on the shape of `chat/typing-store.ts`. The
+helpers `fireDue(list, nowMs)` and `nextSweepDelay(list, nowMs)` are in
+`chat/reminders.ts`. Both take the clock as a parameter, which makes them
+testable without fake timers. The effect sets one timer for the earliest
+pending reminder, at most `SWEEP_MAX_MS` (60 seconds), and sets no timer while
+nothing is pending.
 
 **Deadlines are recomputed from `Date.now()` deltas, never by counting ticks.**
 A hidden tab's timers are clamped to about one a minute and a slept or frozen one
@@ -327,8 +330,8 @@ exactly the case that would expose it. It also means "overdue while chalk was
 closed" needs no special path: the first sweep after load fires everything past
 due.
 
-Crossing `dueAt` sets `firedAt` and publishes a notify event. Everything after
-that — rules, priority, sound, banner, the parking privacy screen's mute, DND —
+Crossing `dueAt` sets `firedAt`. Slice 87-5 does only this. The notify event
+belongs to slice 87-6. Everything after the event — rules, priority, sound, banner, the parking privacy screen's mute, DND —
 is the existing notify pipeline in `App.tsx` (the `notify/bus.ts` events), unchanged.
 
 ## Rendering
@@ -580,11 +583,38 @@ end.
     shows only when one or more reminders are not done.
   - The panel reuses the chrome classes of the thread inbox and has its own
     `chalk-reminders-*` classes for the rows.
-  - Nothing sets `firedAt` until slice 87-5, so the dot and the style of a fired
-    row do not show yet.
+  - Slice 87-5 sets `firedAt`, so the dot and the style of a fired row show
+    from that slice.
   - The browser check is partly done. See *Verification, when built*.
-- **87-5 — firing.** The client sweep, the `visibilitychange` re-evaluation, the
-  overdue-on-load path, the sidebar badge and the `notify/badge.ts` count.
+- **87-5 — firing. BUILT.** The files are `web/src/chat/reminders.ts`,
+  `web/src/notify/badge.ts`, `web/src/components/App.tsx`, and the tests of the
+  first two.
+  - `fireDue` sets `firedAt` on each pending reminder that is due, and returns
+    null if none is due. `nextSweepDelay` returns the time to the earliest
+    pending due time, at most `SWEEP_MAX_MS`.
+  - The sweep is an effect in `App.tsx` after `openReminders`. It runs when the
+    set changes, when the timer of the earliest pending reminder ends, and when
+    the tab becomes visible. The first run after load fires each reminder that
+    became due while chalk was closed.
+  - Firing does not change `updatedAt`. A snooze or a done mark from another
+    device therefore wins the merge over a fire that did not see it. `winner`
+    got two more rules for an equal `updatedAt`: after done wins, fired wins
+    over pending, and then the earlier `firedAt` wins. Two devices that fire
+    one reminder converge on one record and do not upload in turn.
+  - The sweep waits for `remindersSettled`. The state is true after the first
+    merge with the server blob ends. It is also true 10 seconds after the sync
+    starts if no blob arrives. It resets when the account changes.
+  - `badgeCount` has a new input, `firedReminderCount`, and the tab title and
+    the app badge include the fired reminders.
+  - A user sees a dot on the reminders entry (the sidebar row and the phone
+    head button). The row in the list shows as due and sorts first. The clock
+    mark leaves the message row.
+  - The notify event, the sound, and the banner belong to slice 87-6. Nothing
+    fires while chalk is closed. Slices 87-7 and 87-8 build that.
+  - Known limit: on a slow connection, the sweep can fire a reminder before the
+    remote merge ends, after the 10-second fallback. The merge then corrects
+    the record.
+  - The browser check is not done. See *Verification, when built*.
 - **87-6 — the sound and the banner.** A new `"reminder"` `NotifyEventType` —
   the rules engine, not `MachineCategory`, because a person's message is behind
   it — across the exhaustive sites in `notify/rules.ts` (`NotifyEventType`,
@@ -732,3 +762,19 @@ After slices 87-7 and 87-8, add these steps for the closed app:
 12. A click on that notification opens chalk and jumps to the message.
 13. A user with no push subscription sets a reminder. The database holds no wake
     record for that user.
+
+The browser check of 87-5 passed on a desktop viewport on 15 November 2026:
+
+- A reminder became due while chalk was open. The entry got the dot, the row
+  showed as due in the list, the clock mark left the message row, and the tab
+  title showed the count.
+- A reminder became due while the page was closed. It fired at the next load,
+  and the tab title showed two.
+- "Show message" on a fired row marked it done, and the count went down.
+- A snooze of a fired row made it pending again. The dot and the tab count went
+  away, and the clock mark came back.
+
+These checks of 87-5 are open:
+
+- The app badge of an installed chalk.
+- On a phone viewport, the dot on the head button.

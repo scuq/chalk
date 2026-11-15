@@ -10,6 +10,7 @@ function input(over: Partial<BadgeInputs> = {}): BadgeInputs {
     dmChannelIDs: new Set(),
     threadInboxUnreadTotal: 0,
     pendingIncomingCount: 0,
+    firedReminderCount: 0,
     ...over,
   };
 }
@@ -49,4 +50,8 @@ test("threads and friend requests add on top", () => {
     pendingIncomingCount: 1,
   });
   assert.equal(badgeCount(inputs), 5);
+});
+
+test("fired reminders add on top", () => {
+  assert.equal(badgeCount(input({ firedReminderCount: 2, pendingIncomingCount: 1 })), 3);
 });

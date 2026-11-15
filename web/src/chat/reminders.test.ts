@@ -10,6 +10,7 @@ import {
   DONE_KEEP_MS,
   PRESET_LABELS,
   REMINDER_PRESETS,
+  SWEEP_MAX_MS,
   activeCount,
   addReminder,
   fromLocalInput,
@@ -24,9 +25,11 @@ import {
   clipPreview,
   dueAtFor,
   dueNow,
+  fireDue,
   firedCount,
   fitReminders,
   mergeReminders,
+  nextSweepDelay,
   packReminder,
   pendingFor,
   pruneReminders,
@@ -272,6 +275,47 @@ test("dueNow, pendingFor and firedCount on a mixed set", () => {
   const marks = pendingFor(set, uuid(900));
   assert.deepEqual([...marks.keys()].sort(), [due.messageID, later.messageID].sort());
   assert.equal(marks.get(later.messageID), later);
+});
+
+test("fireDue: sets firedAt on the due reminders and keeps updatedAt", () => {
+  const now = at(20, 12);
+  const due = rem(1, { dueAt: now });
+  const later = rem(2, { dueAt: now + 1 });
+  const fired = rem(3, { dueAt: now - 5, firedAt: now - 4 });
+  const done = rem(4, { dueAt: now - 5, doneAt: now - 3 });
+  const next = fireDue([due, later, fired, done], now);
+  assert.deepEqual(next, [{ ...due, firedAt: now }, later, fired, done]);
+  assert.equal(fireDue(next!, now), null);
+  assert.equal(fireDue([], now), null);
+});
+
+test("nextSweepDelay: the earliest pending due time, capped", () => {
+  const now = at(20, 12);
+  assert.equal(nextSweepDelay([], now), null);
+  assert.equal(nextSweepDelay([rem(1, { dueAt: now - 9, firedAt: now })], now), null);
+  assert.equal(nextSweepDelay([rem(1, { dueAt: now + 5000 }), rem(2, { dueAt: now + 900 })], now), 900);
+  assert.equal(nextSweepDelay([rem(1, { dueAt: now + SWEEP_MAX_MS + 1 })], now), SWEEP_MAX_MS);
+  assert.equal(nextSweepDelay([rem(1, { dueAt: now - 1 })], now), 0);
+});
+
+test("mergeReminders: a fire on two devices gives one record in both directions", () => {
+  const pending = rem(1);
+  const firedA = rem(1, { firedAt: at(20, 9) });
+  const firedB = rem(1, { firedAt: at(20, 9) + 700 });
+  assert.deepEqual(mergeReminders([pending], [firedA]), [firedA]);
+  assert.deepEqual(mergeReminders([firedA], [pending]), [firedA]);
+  assert.deepEqual(mergeReminders([firedA], [firedB]), [firedA]);
+  assert.deepEqual(mergeReminders([firedB], [firedA]), [firedA]);
+});
+
+test("mergeReminders: a snooze or a done mark wins over a fire that did not see it", () => {
+  const firedStale = rem(1, { firedAt: at(20, 9) });
+  const snoozed = snoozeReminder([rem(1)], uuid(1), at(25, 9), at(19, 9))![0]!;
+  const done = markDone([rem(1)], uuid(1), at(19, 9))![0]!;
+  assert.deepEqual(mergeReminders([firedStale], [snoozed]), [snoozed]);
+  assert.deepEqual(mergeReminders([snoozed], [firedStale]), [snoozed]);
+  assert.deepEqual(mergeReminders([firedStale], [done]), [done]);
+  assert.deepEqual(mergeReminders([done], [firedStale]), [done]);
 });
 
 test("PRESET_LABELS has a label for each preset", () => {

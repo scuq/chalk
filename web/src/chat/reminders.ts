@@ -152,7 +152,13 @@ function winner(a: Reminder, b: Reminder): Reminder {
   if (b.updatedAt !== a.updatedAt) return b.updatedAt > a.updatedAt ? b : a;
   // A tie. A done record wins, so a stale device cannot bring back a reminder
   // that the user dismissed.
-  if (b.doneAt !== null && a.doneAt === null) return b;
+  if ((b.doneAt !== null) !== (a.doneAt !== null)) return b.doneAt !== null ? b : a;
+  // 87-5: firing does not change `updatedAt`, so a snooze or a done mark from
+  // another device always wins over a fire that did not see it. Two devices can
+  // fire one reminder. Fired wins over pending, and the earlier `firedAt` wins,
+  // so both devices keep one record and do not upload in turn.
+  if ((b.firedAt !== null) !== (a.firedAt !== null)) return b.firedAt !== null ? b : a;
+  if (a.firedAt !== null && b.firedAt !== null && b.firedAt < a.firedAt) return b;
   return a;
 }
 
@@ -167,9 +173,14 @@ function byDueThenID(a: Reminder, b: Reminder): number {
  * mergeReminders returns one record for each reminder ID in a and b, sorted
  * by due time. It does not change its arguments.
  *
- * For two records with one ID, the record with the higher `updatedAt` wins. On
- * a tie, a record with `doneAt` set wins. If the tie remains, the record from
- * a wins.
+ * For two records with one ID, the record with the higher `updatedAt` wins.
+ * On a tie, these rules apply in order:
+ *
+ *   - A record with `doneAt` set wins.
+ *   - A record with `firedAt` set wins over a pending record.
+ *   - The record with the earlier `firedAt` wins.
+ *
+ * If the tie remains, the record from a wins.
  *
  * Both directions of the sync use this function and not last-write-wins. A
  * device with cleared storage holds nothing, and last-write-wins would let it
@@ -399,6 +410,40 @@ function isPending(r: Reminder): boolean {
  */
 export function dueNow(list: readonly Reminder[], nowMs: number): Reminder[] {
   return list.filter((r) => isPending(r) && r.dueAt <= nowMs);
+}
+
+/**
+ * fireDue sets `firedAt` to nowMs on each reminder that dueNow returns. It
+ * returns the new list, or null if no reminder is due. It does not change
+ * `updatedAt`, so a snooze or a done mark from another device wins the merge.
+ * The list that it gets does not change.
+ */
+export function fireDue(list: readonly Reminder[], nowMs: number): Reminder[] | null {
+  let any = false;
+  const next = list.map((r) => {
+    if (!isPending(r) || r.dueAt > nowMs) return r;
+    any = true;
+    return { ...r, firedAt: nowMs };
+  });
+  return any ? next : null;
+}
+
+/** SWEEP_MAX_MS is the longest time, in milliseconds, between two sweeps. */
+export const SWEEP_MAX_MS = 60_000;
+
+/**
+ * nextSweepDelay returns the milliseconds to the next sweep: the time to the
+ * earliest pending `dueAt`, at most SWEEP_MAX_MS. It returns null if no
+ * reminder is pending.
+ */
+export function nextSweepDelay(list: readonly Reminder[], nowMs: number): number | null {
+  let earliest: number | null = null;
+  for (const r of list) {
+    if (!isPending(r)) continue;
+    if (earliest === null || r.dueAt < earliest) earliest = r.dueAt;
+  }
+  if (earliest === null) return null;
+  return Math.min(Math.max(earliest - nowMs, 0), SWEEP_MAX_MS);
 }
 
 /**

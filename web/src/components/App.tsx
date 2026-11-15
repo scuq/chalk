@@ -361,7 +361,9 @@ import {
   REMINDER_MAX,
   activeCount,
   addReminder,
+  fireDue,
   firedCount,
+  nextSweepDelay,
   markDone,
   panelRows,
   pendingFor,
@@ -1282,6 +1284,11 @@ export function App() {
   // load starts a new sync with the new identity. The local store is per user ID.
   const remindersSyncRef = useRef<RemindersSync | null>(null);
   const [remindersSyncReady, setRemindersSyncReady] = useState(false);
+  // 87-5: true when the first merge with the server blob is complete, or 10 s
+  // after the sync started if no blob came (offline). The firing sweep waits
+  // for it, so it does not fire a reminder that another device already
+  // snoozed or marked done.
+  const [remindersSettled, setRemindersSettled] = useState(false);
   useEffect(() => {
     if (!ccReady) return;
     const uid = state.user?.id;
@@ -1323,13 +1330,31 @@ export function App() {
       remindersSyncRef.current?.stop();
       remindersSyncRef.current = null;
       setRemindersSyncReady(false);
+      setRemindersSettled(false);
     };
   }, [ccReady, state.user?.id]);
 
   useEffect(() => {
-    if (!remindersSyncReady || !state.prefsLoaded) return;
-    void remindersSyncRef.current?.applyRemote(state.prefs.reminders_enc);
+    if (!remindersSyncReady || !state.prefsLoaded) return undefined;
+    const sync = remindersSyncRef.current;
+    if (!sync) return undefined;
+    let cancelled = false;
+    void sync
+      .applyRemote(state.prefs.reminders_enc)
+      .catch((err) => console.error("reminders-sync: merge failed:", err))
+      .then(() => {
+        if (!cancelled) setRemindersSettled(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [remindersSyncReady, state.prefsLoaded, state.prefs.reminders_enc]);
+
+  useEffect(() => {
+    if (!remindersSyncReady) return undefined;
+    const t = window.setTimeout(() => setRemindersSettled(true), 10_000);
+    return () => window.clearTimeout(t);
+  }, [remindersSyncReady]);
 
   // Phase 23d: ensure we hold a channel's key -- fetch+unwrap, or
   // creator-bootstrap a keyless channel, then auto-rewrap for members who lack
@@ -1974,11 +1999,39 @@ export function App() {
   // 87-4: the counts and the rows of the Reminders panel. remindersActive is the
   // count of reminders that are not done. It feeds the count of the sidebar row
   // and the show condition of the phone head button. remindersFired feeds the
-  // dots. Nothing sets `firedAt` until the firing slice, so the dots stay off.
+  // dots and the tab badge.
   const remindersActive = useMemo(() => activeCount(reminders), [reminders]);
   const remindersFired = useMemo(() => firedCount(reminders), [reminders]);
   const reminderRows = useMemo(() => panelRows(reminders), [reminders]);
   const openReminders = useCallback(() => dispatch({ kind: "open_panel", panel: "reminders" }), []);
+  // 87-5: the firing sweep. It sets `firedAt` on each due reminder and saves,
+  // and the save uploads through the sync. It runs when the set changes, when
+  // the timer of the earliest pending reminder ends, and when the tab becomes
+  // visible, because a timer in a hidden or sleeping tab can run late. The
+  // first run after load fires each reminder that became due while chalk was
+  // closed.
+  useEffect(() => {
+    if (!remindersUID || !remindersSettled) return undefined;
+    let timer: number | undefined;
+    const sweep = () => {
+      window.clearTimeout(timer);
+      const now = Date.now();
+      const list = loadReminders(remindersUID);
+      const fired = fireDue(list, now);
+      if (fired) saveReminders(remindersUID, fired);
+      const delay = nextSweepDelay(fired ?? list, now);
+      if (delay !== null) timer = window.setTimeout(sweep, delay);
+    };
+    const onVisible = () => {
+      if (!document.hidden) sweep();
+    };
+    sweep();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [remindersUID, remindersSettled, reminders]);
   // The panel actions below read the set from the store, as onSetReminder does.
   // They save nothing if the reminder is done or unknown, because markDone and
   // snoozeReminder then return null.
@@ -4281,10 +4334,11 @@ export function App() {
   );
 
   // 50-7: the unread badge -- "(n) chalk" in the tab title, and the app
-  // icon badge where installed as a PWA. Derived purely from read-cursor
-  // state (badge.ts), so it clears on its own when things are read on
-  // any device, and it deliberately ignores DND: silencing interruptions
-  // is not the same as hiding what's waiting.
+  // icon badge where installed as a PWA. Derived only from read-cursor
+  // state and the count of fired reminders (badge.ts), so it clears on its
+  // own when things are read on any device or a reminder is snoozed or done.
+  // It deliberately ignores DND: silencing interruptions is not the same as
+  // hiding what's waiting.
   useEffect(() => {
     const dmChannelIDs = new Set(
       Object.values(state.channels)
@@ -4313,6 +4367,7 @@ export function App() {
           dmChannelIDs,
           threadInboxUnreadTotal: threadsNeedingYou,
           pendingIncomingCount: state.pendingIncoming.length,
+          firedReminderCount: remindersFired,
         });
     titleController().setCount(n);
     const nav = navigator as Navigator & {
@@ -4332,6 +4387,7 @@ export function App() {
     state.user?.id,
     threadsNeedingYou,
     state.pendingIncoming,
+    remindersFired,
     screened,
   ]);
 
