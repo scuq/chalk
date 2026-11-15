@@ -10,6 +10,11 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Fixed
+- Push notifications for chat messages to an iPhone or iPad failed, because Apple refused a header of the push. The server now sends that header in a form that Apple accepts.
+
 ## v0.12.3 — 15 November 2026 — The reason for a rejected push in the server log
 
 ### Changed

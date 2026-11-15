@@ -3,7 +3,7 @@
 Push notifications that reach an iPhone home-screen chalk with the app fully
 closed, without breaking the E2E privacy model and without any paid accounts.
 Planned against v0.5.2. **In progress, as of 14 November 2026** — slices 65-1
-to 65-9, 65-11, and 65-12 are built, and the plan below was revised that day (next section).
+to 65-9 and 65-11 to 65-13 are built, and the plan below was revised that day (next section).
 
 ## Review of 14 November 2026
 
@@ -140,7 +140,7 @@ envelope signature against the pins before it shows any text.
   65-5. The send path already sets `Event.InstanceID`
   (internal/server/ws.go:1106-1121). Hands off to an async dispatcher (buffered chan + small worker pool +
   per-(user,channel) ~60 s cooldown) so relay latency never blocks WS
-  fan-out. Headers: `Topic` = the constant `"chalk"`, `TTL` 24 h,
+  fan-out. Headers: `Topic` = a constant (`"chalk"` in the plan, `"chalkmsg"` since 65-13), `TTL` 24 h,
   `Urgency: normal` — all three identical on every push, so the header set
   carries nothing. `Topic` is unencrypted, so a per-channel value (the
   obvious base64url(channel UUID)) would hand the relay a stable
@@ -281,6 +281,7 @@ envelope signature against the pins before it shows any text.
 | 65-10 (optional, deferred) | "Hide details" lock-screen mode (generic "new activity" text). `generic` column ships in 0063 up front so no second migration. | — | 60 |
 | 65-11 (built) | `CHALK_OUTBOUND_IPV4_ONLY` and `--outbound-ipv4-only`: the Web Push sender, the link preview fetcher, and the Giphy client dial with `tcp4`. Option `WithIPv4Only` in each package, and a startup log line. `chalkctl init --ipv4-only`, the config key `OUTBOUND_IPV4_ONLY` kept by `init --force`, the backfill in `update`, the env template, tests, the table row and the part "Outbound IPv4 only" in `docs/deployment.md`, and the changelog bullet. The check on a real iPhone is open | cmd/, internal/config/, internal/webpush/, internal/linkpreview/, internal/giphy/, internal/chalkctl/, docs/ | 330 |
 | 65-12 (built) | The log shows the reason of a rejected push: the field `Reason` of `StatusError`, filled by `reasonFrom` from the response body of the push service, and its tests. The table row, the part "Decisions from 65-12", the part "Web push" in `docs/deployment.md`, and the changelog bullet | internal/webpush/, internal/server/push_dispatch_test.go, docs/ | 110 |
+| 65-13 (built) | The Topic header of the message push is `chalkmsg`, not `chalk`: the constant `pushTopic`, the test `TestPushTopicIsCanonicalBase64URL`, the part "Decisions from 65-13", the changelog bullet. The reminder push sends no Topic and does not change. The check on a real iPhone is open | internal/server/, docs/ | 30 |
 
 Total ≈ 2,100 LOC, roughly half tests — comparable to the phase-31 or
 phase-57 arcs. Each slice passes the full verify chain independently.
@@ -415,7 +416,7 @@ Requires real hardware:
   empty for a DM, because the stored name of a DM is a client label and the
   title of a DM push is the sender. Names are cut at 80 runes, so the payload
   always fits the 1023-byte limit (a test checks it). The headers are
-  constant: `Topic` `chalk`, `TTL` 24 hours, `Urgency` `normal`.
+  constant: `Topic` `chalkmsg` (`chalk` before 65-13), `TTL` 24 hours, `Urgency` `normal`.
 - **Badge definition (a deviation from the plan).** `store.PushBadges` counts
   the DM channels with unread messages plus the pending friend requests to the
   user, at most 99 (`MaxPushBadge`). The plan said "unread total". The app
@@ -526,10 +527,13 @@ Requires real hardware:
   4. After the operator turns on `CHALK_OUTBOUND_IPV4_ONLY` (65-11), a push to
      a locked iPhone arrives, and `journalctl -u chalkd` has no
      `push: send to subscription` line. This check is open. The first test
-     gave a 400 from the push service of Apple. After 65-12 is deployed, the
-     operator must read the reason in the line
-     `push: send to subscription <id>: webpush: push service answered 400 (<reason>)`
-     in `journalctl -u chalkd`.
+     gave a 400 from the push service of Apple. 65-12 showed the reason:
+     `push: send to subscription <id>: webpush: push service answered 400 (BadWebPushTopic)`.
+     65-13 changed the topic to `chalkmsg`. After the deploy of 65-13, a chat
+     message pushed to a locked iPhone must arrive, and the log must have no
+     `push: send to subscription` line. If Apple still answers
+     BadWebPushTopic, the next step is to send no Topic, as the reminder push
+     does.
 
 ## Decisions from 65-11
 
@@ -573,7 +577,7 @@ Requires real hardware:
   answers 400 to a message push to an iPhone. The log line had the status
   only: `push: send to subscription <id>: webpush: push service answered 400`.
   The cause of the 400 is unknown. The request properties in the code match
-  the known limits: Topic `chalk`, TTL 86400, Urgency `normal`, a body of
+  the known limits: Topic `chalk` (65-13 changed it), TTL 86400, Urgency `normal`, a body of
   1126 bytes, and a subscription row with the current VAPID key. The reason
   text of the service is necessary before a fix. 65-12 does not correct the
   400.
@@ -592,9 +596,37 @@ Requires real hardware:
 - **Not built.** No change to a request header, the VAPID token, or the
   subscription logic. The log line does not show the push kind (message or
   reminder).
-- **Open fault.** The 400 from the push service of Apple on the production
-  host has an unknown cause. See item 4 of the manual list in "Decisions
-  from 65-9".
+- **Open fault.** 65-12 did not correct the 400. It showed the reason
+  in the log, and 65-13 acts on that reason. See item 4 of the manual list in "Decisions from
+  65-9".
+
+## Decisions from 65-13
+
+- **Problem.** After 65-12, the log on the production host showed
+  `push: send to subscription <id>: webpush: push service answered 400 (BadWebPushTopic)`
+  for a chat message pushed to an iPhone. Apple documents BadWebPushTopic as
+  "The `Topic` header is present but doesn't conform to the specification".
+- **Cause.** The most likely cause is unproven. The rule of Apple is "a
+  maximum of 32 characters from the URL or filename-safe Base64 characters
+  sets". `chalk` has 5 characters from that alphabet, so it meets the written
+  rule. But no base64 string has a length of 4n+1, so a 5-character string
+  cannot decode as base64url. Apple possibly decodes the topic. A probe from
+  the development host could not confirm this, because Apple answers 403
+  `Forbidden` to an unsigned request before it checks the Topic.
+- **Design.** `pushTopic` is `chalkmsg`. It has 8 characters. It decodes to
+  6 bytes and encodes back to the same string, so it is valid under both
+  readings of the rule. The topic is still a constant and names no channel.
+  A push service that holds several undelivered pushes with one topic keeps
+  only the newest, as before. The test `TestPushTopicIsCanonicalBase64URL`
+  checks the length, the decode, and the round trip. It also checks that the
+  decoder refuses `chalk` and `abcde`.
+- **Rejected.** Send no Topic. An offline phone then gets one notification
+  for each pushed message, not only the newest. Also rejected: a resend
+  without the Topic after a BadWebPushTopic answer. That is retry logic for a
+  case that the new topic likely removes.
+- **Not built.** The reminder push sends no Topic and does not change.
+- **Open check.** See item 4 of the manual list in "Decisions from 65-9". If
+  Apple still answers BadWebPushTopic, the next step is to send no Topic.
 
 ## Risks
 

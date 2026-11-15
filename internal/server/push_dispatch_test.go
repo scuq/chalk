@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"log"
@@ -192,7 +193,7 @@ func TestPushDispatchPayload(t *testing.T) {
 	if strings.Contains(string(raw), "SECRET") {
 		t.Fatal("message body reached the payload")
 	}
-	if p.opts.TTL != pushTTL || p.opts.Topic != "chalk" || p.opts.Urgency != webpush.UrgencyNormal {
+	if p.opts.TTL != pushTTL || p.opts.Topic != "chalkmsg" || p.opts.Urgency != webpush.UrgencyNormal {
 		t.Fatalf("options %+v", p.opts)
 	}
 }
@@ -340,5 +341,27 @@ func TestPushPayloadFits(t *testing.T) {
 	b, _ := json.Marshal(p)
 	if len(b) > webpush.PaddedLen-1 {
 		t.Fatalf("largest payload is %d bytes, more than %d", len(b), webpush.PaddedLen-1)
+	}
+}
+
+// TestPushTopicIsCanonicalBase64URL checks that pushTopic has at most 32
+// characters and is a canonical unpadded base64url string. The second loop
+// checks that the decoder refuses "chalk" and "abcde", so the check is not
+// empty.
+func TestPushTopicIsCanonicalBase64URL(t *testing.T) {
+	if n := len(pushTopic); n == 0 || n > 32 {
+		t.Fatalf("pushTopic %q has %d characters, want 1 to 32", pushTopic, n)
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(pushTopic)
+	if err != nil {
+		t.Fatalf("pushTopic %q does not decode as base64url: %v", pushTopic, err)
+	}
+	if again := base64.RawURLEncoding.EncodeToString(raw); again != pushTopic {
+		t.Fatalf("pushTopic %q is not canonical base64url, it encodes back as %q", pushTopic, again)
+	}
+	for _, bad := range []string{"chalk", "abcde"} {
+		if _, err := base64.RawURLEncoding.DecodeString(bad); err == nil {
+			t.Fatalf("%q decoded, so the check above proves nothing", bad)
+		}
 	}
 }

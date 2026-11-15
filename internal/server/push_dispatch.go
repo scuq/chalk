@@ -42,8 +42,10 @@ const (
 	pushTTL = 24 * time.Hour
 	// pushTopic is the Topic header of every push. It is a constant, so it
 	// names no channel. A push service that holds several undelivered
-	// pushes with one topic keeps only the newest.
-	pushTopic = "chalk"
+	// pushes with one topic keeps only the newest. 65-13: The value must
+	// have at most 32 characters and must be a canonical base64url string.
+	// Apple answers BadWebPushTopic to "chalk".
+	pushTopic = "chalkmsg"
 	// pushEventTimeout is the time limit for the work on one message event.
 	pushEventTimeout = 30 * time.Second
 	// maxPushName caps a handle or channel name in the payload, so the
