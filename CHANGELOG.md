@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.12.2 — 15 November 2026 — Message reminders, and IPv4-only outbound traffic
 
 ### Added
 - You can set a reminder on any message, your own or from another user. Open the menu of the message and choose "remind me...". Pick this evening, tomorrow morning, tomorrow evening, this weekend, next Monday, or a date and time. A clock mark shows on the message while the reminder is pending.
