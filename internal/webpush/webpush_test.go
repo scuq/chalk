@@ -277,6 +277,7 @@ func TestSend(t *testing.T) {
 	var got *http.Request
 	var body []byte
 	status := http.StatusCreated
+	reply := ""
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/redirect" {
 			http.Redirect(w, r, "/elsewhere", http.StatusTemporaryRedirect)
@@ -288,6 +289,7 @@ func TestSend(t *testing.T) {
 			w.Header().Set("Retry-After", "30")
 		}
 		w.WriteHeader(status)
+		_, _ = io.WriteString(w, reply)
 	}))
 	defer srv.Close()
 	s := testSender(t, srv)
@@ -332,6 +334,23 @@ func TestSend(t *testing.T) {
 	if err := s.Send(ctx, sub, []byte("x"), opts); !errors.As(err, &se) || se.Code != 429 || se.RetryAfter != "30" {
 		t.Fatalf("429: %v", err)
 	}
+	if se.Reason != "" || se.Error() != "webpush: push service answered 429" {
+		t.Fatalf("429 without a body: reason %q, text %q", se.Reason, se.Error())
+	}
+
+	status = http.StatusBadRequest
+	reply = `{"reason":"BadJwtToken"}`
+	if err := s.Send(ctx, sub, []byte("x"), opts); !errors.As(err, &se) || se.Code != 400 || se.Reason != "BadJwtToken" {
+		t.Fatalf("400: %v", err)
+	}
+	if se.Error() != "webpush: push service answered 400 (BadJwtToken)" {
+		t.Fatalf("400 text: %q", se.Error())
+	}
+	status = http.StatusGone
+	if err := s.Send(ctx, sub, []byte("x"), opts); !errors.Is(err, ErrGone) {
+		t.Fatalf("410 with a body: %v", err)
+	}
+	reply = ""
 
 	// A redirect is an answer, not an instruction: the sender does not
 	// follow it.
@@ -372,5 +391,31 @@ func TestVetDialAddr(t *testing.T) {
 	}
 	if err := vetDialAddr("93.184.216.34:443"); err != nil {
 		t.Fatalf("public address refused: %v", err)
+	}
+}
+
+// TestReasonFrom checks that reasonFrom takes the "reason" field of a JSON
+// body, falls back to the body text, drops characters that are not printable
+// ASCII, and cuts the result to maxReasonLen characters.
+func TestReasonFrom(t *testing.T) {
+	long := strings.Repeat("a", 300)
+	for _, c := range []struct{ name, body, want string }{
+		{"json reason", `{"reason":"VapidPkHashMismatch"}`, "VapidPkHashMismatch"},
+		{"json reason with space", " {\"reason\": \"BadWebPushTopic\"}\n", "BadWebPushTopic"},
+		{"json without reason", `{"error":"x"}`, `{"error":"x"}`},
+		{"json reason not a string", `{"reason":7}`, `{"reason":7}`},
+		{"plain text", "Bad Request\n", "Bad Request"},
+		{"empty", "", ""},
+		{"only space", " \r\n\t", ""},
+		{"control characters", "a\r\nb\x00c\x1b[31md\x7f", "abc[31md"},
+		{"json reason with a newline", `{"reason":"a\nb"}`, "ab"},
+		{"non-ASCII", "café ☃ ok", "caf  ok"},
+		{"bad UTF-8", "ok\xff\xfe", "ok"},
+		{"long", long, long[:maxReasonLen]},
+		{"long json reason", `{"reason":"` + long + `"}`, long[:maxReasonLen]},
+	} {
+		if got := reasonFrom([]byte(c.body)); got != c.want {
+			t.Errorf("%s: reasonFrom = %q, want %q", c.name, got, c.want)
+		}
 	}
 }

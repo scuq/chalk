@@ -3,6 +3,7 @@ package webpush
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"net/netip"
 	"net/url"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -28,15 +30,52 @@ var errDisallowedAddr = errors.New("webpush: address is not public")
 
 // A StatusError is an answer of the push service that is neither a success
 // (status 200 to 299) nor ErrGone. A redirect is a StatusError, because the
-// Sender does not follow redirects.
+// Sender does not follow redirects. Reason holds the text that the service
+// gives for the rejection, if the response body has any.
 type StatusError struct {
 	Code       int
 	RetryAfter string // the Retry-After header, if the service sent one
+	Reason     string // 65-12: the reason text of the service, cleaned by reasonFrom
 }
 
-// Error returns the message of e, with the status code.
+// Error returns the message of e, with the status code. If Reason is not
+// empty, the message ends with Reason in parentheses.
 func (e *StatusError) Error() string {
-	return "webpush: push service answered " + strconv.Itoa(e.Code)
+	msg := "webpush: push service answered " + strconv.Itoa(e.Code)
+	if e.Reason != "" {
+		msg += " (" + e.Reason + ")"
+	}
+	return msg
+}
+
+// maxReasonLen is the maximum length of the reason that reasonFrom returns, in
+// characters.
+const maxReasonLen = 120
+
+// reasonFrom returns the reason text in the response body of a push service.
+// If body is a JSON object with a non-empty string field "reason", the text
+// is that string. Otherwise the text is body. The result keeps only printable
+// ASCII characters (0x20 to 0x7e), has no leading or trailing space, and has
+// at most maxReasonLen characters. A push service is a third party, so its text
+// must not add a line to the log.
+func reasonFrom(body []byte) string {
+	text := string(body)
+	var obj struct {
+		Reason string `json:"reason"`
+	}
+	if json.Unmarshal(body, &obj) == nil && obj.Reason != "" {
+		text = obj.Reason
+	}
+	var b strings.Builder
+	for _, r := range strings.TrimSpace(text) {
+		if b.Len() == maxReasonLen {
+			break
+		}
+		if r >= 0x20 && r < 0x7f {
+			b.WriteRune(r)
+		}
+	}
+	return strings.TrimSpace(b.String())
 }
 
 // Urgency is the Urgency header of RFC 8030.
@@ -150,7 +189,8 @@ func ValidateEndpoint(endpoint string) (origin string, err error) {
 //
 // It returns ErrGone if the subscription no longer exists, ErrEndpoint or
 // ErrPayloadTooLarge for bad input, and a *StatusError for every other
-// answer that is not a success.
+// answer that is not a success. Send reads at most 4096 bytes of the response
+// body. Only a *StatusError uses the body, for its Reason.
 func (s *Sender) Send(ctx context.Context, sub Subscription, payload []byte, opts Options) error {
 	origin, err := ValidateEndpoint(sub.Endpoint)
 	if err != nil {
@@ -184,7 +224,9 @@ func (s *Sender) Send(ctx context.Context, sub Subscription, payload []byte, opt
 		return fmt.Errorf("webpush: send: %w", err)
 	}
 	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+	// The body gives the Reason of a StatusError. Send ignores a read error and
+	// uses the bytes that it read.
+	answer, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 
 	switch {
 	case resp.StatusCode >= 200 && resp.StatusCode < 300:
@@ -192,7 +234,11 @@ func (s *Sender) Send(ctx context.Context, sub Subscription, payload []byte, opt
 	case resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone:
 		return ErrGone
 	}
-	return &StatusError{Code: resp.StatusCode, RetryAfter: resp.Header.Get("Retry-After")}
+	return &StatusError{
+		Code:       resp.StatusCode,
+		RetryAfter: resp.Header.Get("Retry-After"),
+		Reason:     reasonFrom(answer),
+	}
 }
 
 // The rest of this file is the dial-time address guard. It is copied from

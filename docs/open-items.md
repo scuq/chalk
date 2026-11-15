@@ -452,7 +452,7 @@ can reach packaging). Open:
   Mac can keep one on a second display — the two-screen check in the phase
   doc is still to run.
 
-## Phase 65 — web push: IN PROGRESS, 65-1 to 65-9 and 65-11 built
+## Phase 65 — web push: IN PROGRESS, 65-1 to 65-9, 65-11, and 65-12 built
 
 65-1 is built: migration 0063 and `internal/store/push.go`. 65-2 is built:
 the `internal/webpush` package. 65-3 is built: the push config, the VAPID key
@@ -462,7 +462,7 @@ sends a push for each new message that the instance published, and the threat
 model has its section on third parties. 65-6 is built: the service worker, its
 build, and the `no-cache` header for `sw.js`. 65-7 is built: the page registers the
 worker and reconciles the browser subscription at every welcome. 65-8 is built: the push
-part in Settings > notifications calls `enablePush` and `disablePush`. 65-9 is built: a click on a notification opens the chat, also from a closed app and on the phone. 65-11 is built: the switch `CHALK_OUTBOUND_IPV4_ONLY`. The manual device checks and the optional 65-10 (a "hide details" lock-screen mode) are open. Record in [phases/PHASE-65-PUSH.md](phases/PHASE-65-PUSH.md). The plan
+part in Settings > notifications calls `enablePush` and `disablePush`. 65-9 is built: a click on a notification opens the chat, also from a closed app and on the phone. 65-11 is built: the switch `CHALK_OUTBOUND_IPV4_ONLY`. 65-12 is built: the log shows the reason that a push service gives for a rejected push. The manual device checks and the optional 65-10 (a "hide details" lock-screen mode) are open. Record in [phases/PHASE-65-PUSH.md](phases/PHASE-65-PUSH.md). The plan
 was revised on 14 November 2026 after a review against the threat model. A
 subscription belongs to a login session and goes with it. The VAPID key and
 all subscription frames travel only over the WebSocket. Guests cannot
@@ -479,9 +479,10 @@ subscribe.
   because the sender refuses loopback addresses.
   The iPhone check includes this: chalk shows under Settings > Notifications
   only after the permission prompt. It is not in the main list of apps.
-- **Open:** SMTP mail does not obey `CHALK_OUTBOUND_IPV4_ONLY`. The cause of
-  the push timeout on the production host is unknown until the operator turns
-  the switch on and tests.
+- **Open:** SMTP mail does not obey `CHALK_OUTBOUND_IPV4_ONLY`. With the
+  switch on, the connection to the push service of Apple works on the
+  production host, and the service answers 400 to a message push. The cause
+  is unknown until the log shows the reason.
 - **Accepted property:** the badge in a push counts unread DM channels and
   pending friend requests only, at most 99. The app also counts mentions and
   threads and corrects the number when it opens.

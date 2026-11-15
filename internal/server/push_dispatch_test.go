@@ -266,6 +266,24 @@ func TestPushDispatchPrunesGone(t *testing.T) {
 	}
 }
 
+// TestPushDispatchLogsReason checks that the dispatcher log line for a
+// rejected push shows the Reason of the StatusError and does not show the
+// endpoint URL.
+func TestPushDispatchLogsReason(t *testing.T) {
+	f := newPushFixture()
+	var out strings.Builder
+	f.d.logger = log.New(&out, "", 0)
+	f.sender.errs["https://push.cyberdyne.example/bob-laptop"] = &webpush.StatusError{Code: 400, Reason: "BadJwtToken"}
+	f.d.dispatch(context.Background(), f.event)
+	want := ": webpush: push service answered 400 (BadJwtToken)"
+	if !strings.Contains(out.String(), want) {
+		t.Fatalf("log = %q, want it to contain %q", out.String(), want)
+	}
+	if strings.Contains(out.String(), "push.cyberdyne.example") {
+		t.Fatalf("log names the endpoint: %q", out.String())
+	}
+}
+
 func TestPushOnMessageInstanceGuard(t *testing.T) {
 	f := newPushFixture()
 	other := f.event

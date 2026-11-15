@@ -10,6 +10,11 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Changed
+- When a push service rejects a push notification, the server log now shows the reason that the service gives.
+
 ## v0.12.2 — 15 November 2026 — Message reminders, and IPv4-only outbound traffic
 
 ### Added

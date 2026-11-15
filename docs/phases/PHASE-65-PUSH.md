@@ -3,7 +3,7 @@
 Push notifications that reach an iPhone home-screen chalk with the app fully
 closed, without breaking the E2E privacy model and without any paid accounts.
 Planned against v0.5.2. **In progress, as of 14 November 2026** — slices 65-1
-to 65-9 and 65-11 are built, and the plan below was revised that day (next section).
+to 65-9, 65-11, and 65-12 are built, and the plan below was revised that day (next section).
 
 ## Review of 14 November 2026
 
@@ -280,6 +280,7 @@ envelope signature against the pins before it shows any text.
 | 65-9 (built) | Notification click opens the chat (open app, closed app, phone): `openURL` and `parseOpenURL` in `sw-logic.ts`, the worker opens `openURL(target)`, `openFromNotification` and the cold-start target in `App.tsx`, two tests, and 12 checks in `push-page.mjs` with an iPhone 14 device descriptor. Also the payload-contract section in `docs/wire-protocol.md` and the changelog bullet. The real-device checks are open | web/src/, web/src/components/App.tsx, .claude/skills/run-chalk/, docs/ | 80 |
 | 65-10 (optional, deferred) | "Hide details" lock-screen mode (generic "new activity" text). `generic` column ships in 0063 up front so no second migration. | — | 60 |
 | 65-11 (built) | `CHALK_OUTBOUND_IPV4_ONLY` and `--outbound-ipv4-only`: the Web Push sender, the link preview fetcher, and the Giphy client dial with `tcp4`. Option `WithIPv4Only` in each package, and a startup log line. `chalkctl init --ipv4-only`, the config key `OUTBOUND_IPV4_ONLY` kept by `init --force`, the backfill in `update`, the env template, tests, the table row and the part "Outbound IPv4 only" in `docs/deployment.md`, and the changelog bullet. The check on a real iPhone is open | cmd/, internal/config/, internal/webpush/, internal/linkpreview/, internal/giphy/, internal/chalkctl/, docs/ | 330 |
+| 65-12 (built) | The log shows the reason of a rejected push: the field `Reason` of `StatusError`, filled by `reasonFrom` from the response body of the push service, and its tests. The table row, the part "Decisions from 65-12", the part "Web push" in `docs/deployment.md`, and the changelog bullet | internal/webpush/, internal/server/push_dispatch_test.go, docs/ | 110 |
 
 Total ≈ 2,100 LOC, roughly half tests — comparable to the phase-31 or
 phase-57 arcs. Each slice passes the full verify chain independently.
@@ -524,7 +525,11 @@ Requires real hardware:
      chalk tab is open opens a new tab at the chat.
   4. After the operator turns on `CHALK_OUTBOUND_IPV4_ONLY` (65-11), a push to
      a locked iPhone arrives, and `journalctl -u chalkd` has no
-     `push: send to subscription` line. This check is open.
+     `push: send to subscription` line. This check is open. The first test
+     gave a 400 from the push service of Apple. After 65-12 is deployed, the
+     operator must read the reason in the line
+     `push: send to subscription <id>: webpush: push service answered 400 (<reason>)`
+     in `journalctl -u chalkd`.
 
 ## Decisions from 65-11
 
@@ -560,6 +565,36 @@ Requires real hardware:
   because they run on the host. There is no `chalkctl` subcommand that flips
   the switch.
 - **Open check.** See item 4 of the manual list in "Decisions from 65-9".
+
+## Decisions from 65-12
+
+- **Problem.** With `CHALK_OUTBOUND_IPV4_ONLY` on (65-11), the connection to
+  the push service of Apple works on the production host. The service
+  answers 400 to a message push to an iPhone. The log line had the status
+  only: `push: send to subscription <id>: webpush: push service answered 400`.
+  The cause of the 400 is unknown. The request properties in the code match
+  the known limits: Topic `chalk`, TTL 86400, Urgency `normal`, a body of
+  1126 bytes, and a subscription row with the current VAPID key. The reason
+  text of the service is necessary before a fix. 65-12 does not correct the
+  400.
+- **Design.** `StatusError` has a field `Reason`. `Error` adds
+  ` (<Reason>)` if `Reason` is not empty. With an empty `Reason` the text is
+  the same as before. `Send` reads at most 4096 bytes of the response body,
+  as before, and keeps them. For a `StatusError` only, it fills `Reason`
+  through `reasonFrom`. A success, a 404, and a 410 do not use the body.
+- **Rules of `reasonFrom`.** If the body is a JSON object with a non-empty
+  string field `reason`, the result comes from that string. Otherwise it
+  comes from the body text. The result keeps printable ASCII only (0x20 to
+  0x7e), has no leading or trailing space, and has at most 120 characters. A
+  push service is a third party, so its text must not add a line to the log.
+- **Privacy.** The response body of a push service holds no message text and
+  no key. The log line does not contain the endpoint URL.
+- **Not built.** No change to a request header, the VAPID token, or the
+  subscription logic. The log line does not show the push kind (message or
+  reminder).
+- **Open fault.** The 400 from the push service of Apple on the production
+  host has an unknown cause. See item 4 of the manual list in "Decisions
+  from 65-9".
 
 ## Risks
 

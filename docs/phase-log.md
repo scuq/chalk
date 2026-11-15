@@ -56,7 +56,7 @@ as-built rather than a contemporaneous plan.
 | 62 | zuckermode conversation list | [PHASE-62-ZUCKER.md](phases/PHASE-62-ZUCKER.md) *(backfilled)* |
 | 63 | call grid, speaking dot, mic by label | [PHASE-63-CALLTILES.md](phases/PHASE-63-CALLTILES.md) *(backfilled)* |
 | 64 | the back swipe | [PHASE-64-SWIPEBACK.md](phases/PHASE-64-SWIPEBACK.md) *(backfilled)* |
-| 65 | web push — sessions own their subscriptions, and the socket carries every push frame *(in progress, 65-1 to 65-9 and 65-11 built)* | [PHASE-65-PUSH.md](phases/PHASE-65-PUSH.md) |
+| 65 | web push — sessions own their subscriptions, and the socket carries every push frame *(in progress, 65-1 to 65-9, 65-11, and 65-12 built)* | [PHASE-65-PUSH.md](phases/PHASE-65-PUSH.md) |
 | 66 | call preferences that follow the account | [PHASE-66-CALLPREFS.md](phases/PHASE-66-CALLPREFS.md) *(backfilled)* |
 | 67 | link labels | [PHASE-67-LINKLABELS.md](phases/PHASE-67-LINKLABELS.md) *(backfilled)* |
 | 68 | settings tabs, cross-tab filter | [PHASE-68-SETTINGSTABS.md](phases/PHASE-68-SETTINGSTABS.md) *(backfilled)* |

@@ -251,6 +251,13 @@ they come from your server.
 Each user must still turn push on for each device. `/api/auth/config`
 reports only `push_enabled`. It never carries key material.
 
+If a push service rejects a push, chalkd writes the log line
+`push: send to subscription <id>: webpush: push service answered <status> (<reason>)`.
+The reason is the text that the push service gives.
+Run `journalctl -u chalkd | grep 'push:'` to see it.
+A successful push gives no log line.
+If the push service answers 404 or 410, chalkd deletes the subscription without a log line.
+
 ## Outbound IPv4 only (phase 65-11)
 
 chalkd makes outbound HTTP requests for three features: push, link previews,
