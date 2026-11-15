@@ -8,8 +8,8 @@
 // listening bench: a theme is tuned in a DAW, not in a table of numbers.
 //
 // A theme is ten files, one per *cue*. That is fewer than chalk has sound
-// categories: the eight rules-routed event types (mention, dm, thread
-// reply, ...) all share the "new message" cue, because the themes were
+// categories: the nine rules-routed event types (mention, dm, thread
+// reply, reminder, ...) all share the "new message" cue, because the themes were
 // authored for the ten events a listener can actually tell apart, and a
 // mention is told from a plain message by the banner and the badge rather
 // than by a different noise. CUE_FOR is that mapping and is the one place
@@ -74,6 +74,7 @@ export const CUE_FOR: Record<SoundCategory, ThemeCue> = {
   channel_added: "10_new_message",
   friend_request: "10_new_message",
   governance: "10_new_message",
+  reminder: "10_new_message",
   presence: "01_friend_online",
   call_join: "02_you_join_call",
   call_leave: "03_you_leave_call",

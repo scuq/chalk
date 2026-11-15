@@ -2,15 +2,15 @@
 
 A way to say "not now, but don't let me lose this" about a single message,
 without answering it, copying it somewhere, or leaving the channel unread as a
-to-do list. Designed against v0.7.2. **IN PROGRESS: slices 87-1 to 87-5 are
-built, and slices 87-6 to 87-9 are open.** The design was written on 4 August 2026 and
+to-do list. Designed against v0.7.2. **IN PROGRESS: slices 87-1 to 87-6 are
+built, and slices 87-7 to 87-9 are open.** The design was written on 4 August 2026 and
 revised on 15 November 2026. The revision changed the presets and added a push
 to a closed app. Each later slice starts with a new check of the code and a
 new decision from the user.
 
-**Status:** in progress, 87-1 to 87-5 built, design revised on 15 November 2026.
+**Status:** in progress, 87-1 to 87-6 built, design revised on 15 November 2026.
 **Tag:** `#reminders` → `tools/where.sh -g reminders` (it finds this file and
-the files of slices 87-1 to 87-5).
+the files of slices 87-1 to 87-6).
 
 ## The problem
 
@@ -615,13 +615,48 @@ end.
     remote merge ends, after the 10-second fallback. The merge then corrects
     the record.
   - The browser check is not done. See *Verification, when built*.
-- **87-6 — the sound and the banner.** A new `"reminder"` `NotifyEventType` —
-  the rules engine, not `MachineCategory`, because a person's message is behind
-  it — across the exhaustive sites in `notify/rules.ts` (`NotifyEventType`,
-  `NOTIFY_EVENT_TYPES`, `EVENT_TYPE_LABELS`, and the defaults) and a
-  `case "reminder":` in `bannerContent` (`notify/banners.ts`). `CUE_FOR`
-  (`notify/themes.ts`) must gain a row or `themes.test.ts` goes red; see the
-  open item below.
+- **87-6 — the sound and the banner. BUILT.** The files are
+  `web/src/notify/rules.ts`, `web/src/notify/themes.ts`,
+  `web/src/notify/bus.ts`, `web/src/notify/banners.ts`, and
+  `web/src/components/App.tsx`.
+  - A new `"reminder"` `NotifyEventType` goes through the rules engine, not
+    `MachineCategory`, because a message of a person is behind it. It is listed
+    after `thread_reply` in `NOTIFY_EVENT_TYPES`. Its label is "reminders" and
+    its description is "a reminder you set is due". Its default priority is 4
+    (sound, banner, and blink). It shows as a row in **Settings** >
+    notifications with no change to the interface.
+  - `CUE_FOR.reminder` is `"10_new_message"`. This cue is provisional. No sound
+    file changed. A cue of its own for a reminder stays an open item of the
+    phase (see *Open items the design leaves*).
+  - `NotifyEvent` has a new field, `reminderID`. `bannerContent` has a
+    `case "reminder"`. The title is "reminder — " and the channel. The body is the
+    stored preview. The tag is `chalk-rem-` and the reminder ID. A message
+    banner of the channel does not replace this banner, and reading the channel
+    does not close it.
+  - `closeReminder(id)` closes the banner of one reminder. An effect in
+    `App.tsx` calls it when a reminder is no longer fired and open. That is the
+    case when the reminder is done or snoozed, on this device or on another one.
+  - The firing sweep publishes one `reminder` notify event for each reminder
+    that it fires. Several reminders that fire at one load give one sound and
+    one banner for each reminder, because sounds within 2 seconds collapse.
+  - The bus consumer sets `isRelevantSurfaceOpen` to false for a `reminder`
+    event. An open channel does not mean that the user sees an old message, so
+    the sound and the banner are not suppressed as "already watching".
+  - A click on the banner calls `openFromNotification` with `reminderID`. It
+    calls `jumpReminderRef`, which jumps to the message as "show message" in the
+    panel does. This marks a fired reminder done. If the channel is gone, the
+    click opens the Reminders panel.
+  - The pipeline is unchanged. Do-not-disturb suppresses the sound, the banner,
+    and the blink. The privacy screen suppresses the sound. Parking suppresses
+    the banner. The banner is an operating system notification and needs the
+    notification permission.
+  - Each open device runs its own sweep, so two open devices can both sound for
+    one reminder.
+  - A user hears the sound at the due time, with chalk open. They see a desktop
+    notification with the channel and the start of the message, and the tab
+    title blinks. Nothing happens while chalk is closed. Slices 87-7 and 87-8
+    build that.
+  - The browser check is not done. See *Verification, when built*.
 - **87-7 — the wake record.** Migration 0065, the store methods, the wake frame,
   and the reconcile at welcome. Server code.
 - **87-8 — the push.** The sweep loop, the `reminder` push kind, the service
@@ -778,3 +813,18 @@ These checks of 87-5 are open:
 
 - The app badge of an installed chalk.
 - On a phone viewport, the dot on the head button.
+
+The browser check of 87-6 passed on a desktop viewport on 15 November 2026:
+
+- The banner showed "reminder" and the channel as the title, and the start of
+  the message as the body. It showed while the channel of the message was open.
+- A click on the banner flashed the message and marked the reminder done.
+- A snooze of a fired reminder closed its banner.
+
+These checks of 87-6 are open:
+
+- The notification sound plays at the due time.
+- Done or snooze on another device closes the banner.
+- **Settings** > notifications has a "reminders" row.
+- Do-not-disturb stops the sound, the banner, and the blink.
+- The privacy screen stops the sound.

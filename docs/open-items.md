@@ -489,7 +489,7 @@ subscribe.
   was made with, and the dispatcher lists only rows that match the current
   key. 65-5 must pass the current key to `ListPushSubscriptionsForUsers`.
 
-## Phase 87 — message reminders: IN PROGRESS, 87-1 to 87-5 built
+## Phase 87 — message reminders: IN PROGRESS, 87-1 to 87-6 built
 
 Message reminders bring one message back later. 87-1 is built: the pure rules
 in `web/src/chat/reminders.ts`, with tests. 87-2 is built: the sealed prefs
@@ -505,11 +505,13 @@ Reminders row in the sidebar, the button in the head of the conversation list on
 a phone, and the panel with jump, snooze, and done. 87-5 added firing: while
 chalk is open, and at the next load for a reminder that became due while chalk
 was closed, a due reminder gets a dot on the reminders entry, shows as due
-in the list, and counts in the tab title and the app badge. Slices 87-6 to
-87-9 are open. 87-6 adds the sound and the banner, 87-7 and 87-8 add the wake
-record and the push for a closed app, and 87-9 adds the threat-model and
-wire-protocol records. Until 87-6 there is no sound and no banner, and until
-87-8 nothing fires while chalk is closed. The browser check of 87-3 and the
+in the list, and counts in the tab title and the app badge. 87-6 added the sound, the
+banner, and a row for reminders in the notification settings, for a reminder
+that becomes due while chalk is open. Slices 87-7 to 87-9 are open. 87-7 and
+87-8 add the wake record and the push for a closed app, and 87-9 adds the
+threat-model and wire-protocol records. Until 87-8 nothing fires while chalk is
+closed. The reminder plays the cue of a new message. A cue of its own for a
+reminder is open, and it needs a new file in each theme. The browser check of 87-3 and the
 check of 87-4 are done on a desktop viewport. These checks stay open:
 
 - 87-3: the phone viewport (the inline mark and the long-press menu).
@@ -519,6 +521,7 @@ check of 87-4 are done on a desktop viewport. These checks stay open:
 - 87-4: a jump to a message that is not loaded (the crawl).
 - 87-4: a reminder whose channel is gone.
 - 87-5: the app badge of an installed chalk, and the dot on the phone head button.
+- 87-6: the sound at the due time, the banner close from another device, the settings row, do-not-disturb, and the privacy screen.
 
 Record in
 [phases/PHASE-87-REMINDERS.md](phases/PHASE-87-REMINDERS.md).

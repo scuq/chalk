@@ -48,6 +48,7 @@ rendered by `tools/render-classic-theme.mjs`), `banners.ts`, `title.ts`,
 | `mention` | 4 | someone writes your handle in a channel |
 | `dm` | 4 | any message in a 1:1 — thread replies in a DM included |
 | `thread_reply` | 3 | a reply in a thread you wrote in, outside DMs |
+| `reminder` | 4 | a reminder you set is due, while chalk is open |
 | `channel_added` | 3 | you're added to a channel |
 | `friend_request` | 3 | a friend request arrives (accept/decline/removal stay quiet) |
 | `voice` | 2 | a call **starts** — someone else joins an *empty* voice room; later joiners are silent, and scratchpad chat never notifies |
@@ -171,10 +172,11 @@ The theme is a **per-device** preference (`theme` in `chalk.notify.v2`, next to
 the volume), picked in profile → notifications; the per-cue play buttons
 preview in whichever theme is selected. Nothing about it reaches the server.
 
-**Cues vs categories.** chalk has seventeen sound categories but a theme has
-ten cues: the eight rules-routed event types (`mention`, `dm`, `thread_reply`,
-`message`, `voice`, `channel_added`, `friend_request`, `governance`) all play
+**Cues vs categories.** chalk has eighteen sound categories but a theme has
+ten cues: the nine rules-routed event types (`mention`, `dm`, `thread_reply`,
+`reminder`, `message`, `voice`, `channel_added`, `friend_request`, `governance`) all play
 the theme's *new message* cue, and each machine noise has a cue of its own.
+The `reminder` cue is provisional. A cue of its own for a reminder is open.
 That is deliberate — the themes were authored for the ten events a listener
 can tell apart, and a mention is told from a plain message by the banner and
 the badge. The mapping is `CUE_FOR` in `web/src/notify/themes.ts`, the only

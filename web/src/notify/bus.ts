@@ -24,6 +24,9 @@ export interface NotifyEvent {
   senderHandle?: string;
   channelName?: string;
   preview?: string;
+  // 87-6: set only on a "reminder" event. A click on its banner jumps to the
+  // message of this reminder.
+  reminderID?: string;
 }
 
 const subscribers = new Set<(ev: NotifyEvent) => void>();

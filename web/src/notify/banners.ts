@@ -42,11 +42,13 @@ function channelLabel(ev: NotifyEvent): string {
 }
 
 const chTag = (id: string | undefined) => `chalk-ch-${id ?? "unknown"}`;
+const remTag = (id: string | undefined) => `chalk-rem-${id ?? "unknown"}`;
 
 // The pure half: what does a banner for this event say? One tag per
 // channel for channel-shaped events, one per thread for thread replies,
 // a single shared tag for friend requests -- the newest request is the
-// one worth seeing, and the friends panel lists the rest.
+// one worth seeing, and the friends panel lists the rest. A reminder has one
+// tag of its own for each reminder, so reading a channel does not close it.
 export function bannerContent(ev: NotifyEvent): BannerContent {
   const who = ev.senderHandle || "someone";
   switch (ev.type) {
@@ -94,12 +96,21 @@ export function bannerContent(ev: NotifyEvent): BannerContent {
         title: `${channelLabel(ev)} — ${ev.preview || "a proposal"}`,
         body: "",
       };
+    case "reminder":
+      // 87-6: one tag for each reminder. A message banner of the channel does
+      // not replace it, and reading the channel does not close it.
+      return {
+        tag: remTag(ev.reminderID),
+        title: `reminder — ${channelLabel(ev)}`,
+        body: preview(ev.preview),
+      };
   }
 }
 
 export interface BannerNav {
   channelID?: string;
   threadID?: string;
+  reminderID?: string;
 }
 
 // What the caller knows about the moment, same shape as PlayContext.
@@ -170,7 +181,11 @@ export class NotifyBanners {
       });
       n.onclick = () => {
         window.focus();
-        this.onNavigate?.({ channelID: ev.channelID, threadID: ev.threadID });
+        this.onNavigate?.({
+          channelID: ev.channelID,
+          threadID: ev.threadID,
+          reminderID: ev.reminderID,
+        });
         n.close();
         this.byTag.delete(content.tag);
       };
@@ -193,6 +208,11 @@ export class NotifyBanners {
 
   closeThread(threadID: string): void {
     this.closeTag(`chalk-th-${threadID}`);
+  }
+
+  // 87-6: closes the banner of a reminder that is done or snoozed.
+  closeReminder(reminderID: string): void {
+    this.closeTag(remTag(reminderID));
   }
 
   closeFriend(): void {

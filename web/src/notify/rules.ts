@@ -26,7 +26,8 @@ export type NotifyEventType =
   | "voice"
   | "channel_added"
   | "friend_request"
-  | "governance";
+  | "governance"
+  | "reminder";
 
 // Order matters: this is the order the rules UI lists the defaults in.
 // Loud, personal things first, same convention as SOUND_CATEGORIES.
@@ -34,6 +35,7 @@ export const NOTIFY_EVENT_TYPES: NotifyEventType[] = [
   "mention",
   "dm",
   "thread_reply",
+  "reminder",
   "message",
   "voice",
   "channel_added",
@@ -45,6 +47,7 @@ export const EVENT_TYPE_LABELS: Record<NotifyEventType, { label: string; desc: s
   mention: { label: "mentions", desc: "someone writes your handle" },
   dm: { label: "direct messages", desc: "a 1:1 message" },
   thread_reply: { label: "thread replies", desc: "a reply in a thread you're in" },
+  reminder: { label: "reminders", desc: "a reminder you set is due" },
   message: { label: "every message", desc: "any new message in any channel" },
   voice: { label: "calls", desc: "someone starts a call in a voice channel" },
   channel_added: { label: "channel invites", desc: "you're added to a channel" },
@@ -105,6 +108,7 @@ export const DEFAULT_PROFILES: NotifyProfiles = {
 export const DEFAULT_TYPE_PRIORITIES: Record<NotifyEventType, Priority> = {
   mention: 4,
   dm: 4,
+  reminder: 4,
   thread_reply: 3,
   channel_added: 3,
   friend_request: 3,

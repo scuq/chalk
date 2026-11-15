@@ -361,6 +361,7 @@ import {
   REMINDER_MAX,
   activeCount,
   addReminder,
+  dueNow,
   fireDue,
   firedCount,
   nextSweepDelay,
@@ -695,18 +696,28 @@ export function App() {
   // is declared later in this component.
   const openRefChannels = useRef(state.channels);
   openRefChannels.current = state.channels;
-  const openFromNotification = useCallback((nav: { channelID?: string; threadID?: string }) => {
-    const id = nav.channelID;
-    if (!id) return;
-    if (nav.threadID) {
-      dispatch({ kind: "open_thread_from_inbox", channelID: id, threadID: nav.threadID });
-    } else {
-      dispatch({ kind: "set_active_channel", channelID: id });
-      dispatch({ kind: "unread_mark_refresh", channelID: id });
-    }
-    if (openRefChannels.current[id]?.channelType === "voice" && !nav.threadID) setCallView(id);
-    else setZuckerScreen("chat");
-  }, []);
+  // 87-6: the jump of a reminder banner. The function is set later in this
+  // component, after onJumpReminder.
+  const jumpReminderRef = useRef<((reminderID: string) => void) | null>(null);
+  const openFromNotification = useCallback(
+    (nav: { channelID?: string; threadID?: string; reminderID?: string }) => {
+      if (nav.reminderID) {
+        jumpReminderRef.current?.(nav.reminderID);
+        return;
+      }
+      const id = nav.channelID;
+      if (!id) return;
+      if (nav.threadID) {
+        dispatch({ kind: "open_thread_from_inbox", channelID: id, threadID: nav.threadID });
+      } else {
+        dispatch({ kind: "set_active_channel", channelID: id });
+        dispatch({ kind: "unread_mark_refresh", channelID: id });
+      }
+      if (openRefChannels.current[id]?.channelType === "voice" && !nav.threadID) setCallView(id);
+      else setZuckerScreen("chat");
+    },
+    [],
+  );
   // 65-9: the target of a cold start. The worker opens "/?open=<channel>",
   // and this ref reads it once.
   const pendingOpenRef = useRef(
@@ -2017,8 +2028,20 @@ export function App() {
       window.clearTimeout(timer);
       const now = Date.now();
       const list = loadReminders(remindersUID);
+      const due = dueNow(list, now);
       const fired = fireDue(list, now);
       if (fired) saveReminders(remindersUID, fired);
+      // 87-6: one notify event for each reminder that this sweep fired. The
+      // rules decide the sound, the banner, and the blink.
+      for (const r of due) {
+        publishNotifyEvent({
+          type: "reminder",
+          channelID: r.channelID,
+          channelName: openRefChannels.current[r.channelID]?.name || undefined,
+          preview: r.preview,
+          reminderID: r.id,
+        });
+      }
       const delay = nextSweepDelay(fired ?? list, now);
       if (delay !== null) timer = window.setTimeout(sweep, delay);
     };
@@ -2032,6 +2055,18 @@ export function App() {
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [remindersUID, remindersSettled, reminders]);
+  // 87-6: the banner of a reminder closes when the reminder is no longer
+  // fired and open: done or snoozed, on this device or on another one.
+  const firedBannerIDs = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const now = new Set(
+      reminders.filter((r) => r.firedAt !== null && r.doneAt === null).map((r) => r.id),
+    );
+    for (const id of firedBannerIDs.current) {
+      if (!now.has(id)) notifyBanners().closeReminder(id);
+    }
+    firedBannerIDs.current = now;
+  }, [reminders]);
   // The panel actions below read the set from the store, as onSetReminder does.
   // They save nothing if the reminder is done or unknown, because markDone and
   // snoozeReminder then return null.
@@ -2532,8 +2567,13 @@ export function App() {
         tabVisible: tabVisibleRef.current,
         userIdle: userIdleRef.current,
         // 53-1: parked means the channel is on screen in name only.
+        // 87-6: a reminder is about an old message, so an open channel does
+        // not mean that the user already sees it.
         isRelevantSurfaceOpen:
-          !parkedRef.current && !!ev.channelID && ev.channelID === activeChannelRef.current,
+          ev.type !== "reminder" &&
+          !parkedRef.current &&
+          !!ev.channelID &&
+          ev.channelID === activeChannelRef.current,
       };
       // 53-5: with the privacy screen on, a chime is one more thing that says
       // "this window is a chat client and something just arrived in it" to the
@@ -5951,6 +5991,19 @@ export function App() {
       dispatch({ kind: "set_active_channel", channelID: r.channelID });
     }
     setFlashMessage({ channelID: r.channelID, messageID: r.messageID, seq: r.seq });
+  };
+  // 87-6: a click on a reminder banner. A reminder whose channel is gone has
+  // no message to show, so the click opens the Reminders panel.
+  jumpReminderRef.current = (reminderID: string) => {
+    if (!remindersUID) return;
+    const r = loadReminders(remindersUID).find((x) => x.id === reminderID);
+    if (!r || r.doneAt !== null) return;
+    if (!state.channels[r.channelID]) {
+      dispatch({ kind: "open_panel", panel: "reminders" });
+      return;
+    }
+    onJumpReminder(r);
+    setZuckerScreen("chat");
   };
 
   // 61-2: a clicked search result. close_panel is explicit because

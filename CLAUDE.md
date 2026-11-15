@@ -191,7 +191,7 @@ agent into the search agent.
   tool, never by hand. `arcade` (the default) is romainsimon/uisfx's
   MIT-licensed pack shipped byte for byte — re-encoding it would break the
   attribution `LICENSE.uisfx` beside it makes. A theme is ten cues, WAV or
-  MP3, and chalk has seventeen categories — the mapping is `CUE_FOR` in
+  MP3, and chalk has eighteen categories — the mapping is `CUE_FOR` in
   `web/src/notify/themes.ts`, and `themes.test.ts` holds table and folders to
   each other. Details in `docs/notification-sounds.md`.
 

@@ -71,3 +71,15 @@ test("previews truncate at a bounded length", () => {
   assert.ok(c.body.length <= 140);
   assert.ok(c.body.endsWith("…"));
 });
+
+test("a reminder banner has its own tag and carries the preview", () => {
+  const c = bannerContent(
+    ev({ type: "reminder", senderHandle: undefined, reminderID: "r7", preview: "renew the cert" }),
+  );
+  assert.equal(c.title, "reminder — #general");
+  assert.equal(c.body, "renew the cert");
+  assert.equal(c.tag, "chalk-rem-r7", "a message banner of the channel must not replace it");
+  const bare = bannerContent(ev({ type: "reminder", channelName: undefined, reminderID: "r8" }));
+  assert.equal(bare.title, "reminder — a channel");
+  assert.equal(bare.body, "");
+});
