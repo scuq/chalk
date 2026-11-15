@@ -86,3 +86,33 @@ test("an open URL takes only plain ids", () => {
   assert.equal(parseOpenURL("?open=" + "a".repeat(65)), null);
   assert.deepEqual(parseOpenURL("?open=c1&thread=a%20b"), { channelID: "c1" });
 });
+
+// 87-8: the reminder push.
+const REM = "5b0f7c1e-52f0-4a8e-9d3a-0c9a4f1d2e77";
+
+test("a reminder push shows one constant line and no message data", () => {
+  const p = parsePushPayload({ v: 1, kind: "reminder", reminder_id: REM });
+  assert.deepEqual(p, { v: 1, kind: "reminder", reminder_id: REM });
+  const n = notificationFor(p, "/icons/icon-192-AB.png");
+  assert.equal(n.title, "chalk");
+  assert.equal(n.options.body, "Reminder: a message is due");
+  assert.equal(n.options.tag, `chalk-rem-${REM}`, "the tag of the in-app reminder banner");
+  assert.deepEqual(n.options.data, { reminderID: REM });
+  assert.equal(n.badge, null, "a reminder does not change the app badge");
+});
+
+test("a reminder push with a bad ID gets the generic notification", () => {
+  assert.equal(parsePushPayload({ v: 1, kind: "reminder" }), null);
+  assert.equal(parsePushPayload({ v: 1, kind: "reminder", reminder_id: "a b" }), null);
+  assert.equal(parsePushPayload({ v: 2, kind: "reminder", reminder_id: REM }), null);
+  assert.equal(notificationFor(null).options.tag, "chalk-push");
+});
+
+test("a reminder click target stands alone and goes through the URL", () => {
+  assert.deepEqual(clickTarget({ reminderID: REM }), { reminderID: REM });
+  assert.equal(openURL({ reminderID: REM }), `/?reminder=${REM}`);
+  assert.deepEqual(parseOpenURL(`?reminder=${REM}`), { reminderID: REM });
+  assert.equal(openURL({ reminderID: "../x" }), "/");
+  assert.equal(parseOpenURL("?reminder=%3Cscript%3E"), null);
+  assert.deepEqual(parseOpenURL("?reminder=a%20b&open=c1"), { channelID: "c1" });
+});

@@ -8,7 +8,14 @@
 // click, and subscribes again after the browser replaces the subscription.
 // It keeps no state.
 
-import { OPEN_MESSAGE, clickTarget, notificationFor, openURL, parsePushPayload } from "./sw-logic";
+import {
+  OPEN_MESSAGE,
+  clickTarget,
+  notificationFor,
+  openURL,
+  parsePushPayload,
+  type OpenTarget,
+} from "./sw-logic";
 
 declare const self: ServiceWorkerGlobalScope;
 // The hashed URL of the 192 px app icon. build.mjs sets it with a define.
@@ -60,14 +67,15 @@ self.addEventListener("notificationclick", (event) => {
 
 // openChalk focuses a chalk window and posts the target to it. If no chalk
 // window exists, it opens a new one at openURL(target), and the page reads
-// the target from the address at start.
-async function openChalk(target: { channelID?: string; threadID?: string }): Promise<void> {
+// the target from the address at start. A target with only a reminderID is
+// posted too.
+async function openChalk(target: OpenTarget): Promise<void> {
   const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
   const own = windows.filter((c) => new URL(c.url).origin === self.location.origin);
   const win = own.find((c) => c.focused) ?? own[0];
   if (win) {
     await win.focus();
-    if (target.channelID) win.postMessage({ type: OPEN_MESSAGE, ...target });
+    if (target.channelID || target.reminderID) win.postMessage({ type: OPEN_MESSAGE, ...target });
     return;
   }
   await self.clients.openWindow(openURL(target));

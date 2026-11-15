@@ -83,6 +83,8 @@ type pushData interface {
 	badges(ctx context.Context, userIDs []uuid.UUID) (map[uuid.UUID]int, error)
 	deleteSubscription(ctx context.Context, id uuid.UUID) error
 	touchSubscription(ctx context.Context, id uuid.UUID) error
+	// 87-8: the wake records that are due. See store.ClaimDueReminderWakes.
+	claimReminderWakes(ctx context.Context, now time.Time, limit int) ([]store.DueReminderWake, error)
 }
 
 // pushSender is the part of *webpush.Sender the dispatcher uses.
@@ -344,4 +346,8 @@ func (s storePushData) deleteSubscription(ctx context.Context, id uuid.UUID) err
 
 func (s storePushData) touchSubscription(ctx context.Context, id uuid.UUID) error {
 	return s.st.TouchPushSubscription(ctx, id)
+}
+
+func (s storePushData) claimReminderWakes(ctx context.Context, now time.Time, limit int) ([]store.DueReminderWake, error) {
+	return s.st.ClaimDueReminderWakes(ctx, now, limit)
 }

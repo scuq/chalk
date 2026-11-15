@@ -208,4 +208,42 @@ func TestReminderWakes(t *testing.T) {
 			t.Fatalf("rows after purge: %d", n)
 		}
 	})
+
+	// 87-8: the claim of the due records.
+	t.Run("claim takes the due records once, earliest first", func(t *testing.T) {
+		if _, err := pool.Exec(ctx, `DELETE FROM reminder_wakes`); err != nil {
+			t.Fatal(err)
+		}
+		u := mkUser("claim")
+		blocked := mkUser("claimblocked")
+		sub(mkSession(u), "https://push.example/k1")
+		sub(mkSession(blocked), "https://push.example/k2")
+		now := base.Add(90 * time.Minute)
+		wakes := set(4) // due at base, +1h, +2h, +3h: two are due at now
+		replace(u, wakes)
+		replace(blocked, set(1))
+		if _, err := pool.Exec(ctx, `UPDATE users SET blocked_at = now() WHERE id = $1`, blocked); err != nil {
+			t.Fatal(err)
+		}
+
+		first, err := s.ClaimDueReminderWakes(ctx, now, 1)
+		if err != nil || len(first) != 1 || first[0].UserID != u || first[0].ReminderID != wakes[0].ReminderID {
+			t.Fatalf("first claim: %v %+v", err, first)
+		}
+		rest, err := s.ClaimDueReminderWakes(ctx, now, 50)
+		if err != nil || len(rest) != 1 || rest[0].ReminderID != wakes[1].ReminderID {
+			t.Fatalf("second claim: %v %+v", err, rest)
+		}
+		again, err := s.ClaimDueReminderWakes(ctx, now, 50)
+		if err != nil || len(again) != 0 {
+			t.Fatalf("third claim: %v %+v", err, again)
+		}
+		if stored(u) != 2 {
+			t.Fatalf("records that are not due: %d", stored(u))
+		}
+		// The due record of the blocked user is deleted and not returned.
+		if stored(blocked) != 0 {
+			t.Fatalf("blocked user's records: %d", stored(blocked))
+		}
+	})
 }

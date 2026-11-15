@@ -3,9 +3,9 @@
 // uses no worker or DOM globals, so test.mjs runs it under node.
 
 /** The plaintext of a push. See pushPayload in internal/server/push_dispatch.go. */
-export interface PushPayload {
+export interface MessagePushPayload {
   v: number;
-  kind: string;
+  kind: "message";
   channel_id: string;
   message_id: string;
   thread_id?: string;
@@ -15,10 +15,29 @@ export interface PushPayload {
   unread: number;
 }
 
-/** What a notification click opens. If the fields are empty, the click opens the app unchanged. */
+/**
+ * 87-8: the plaintext of a reminder push. See reminderPushPayload in
+ * internal/server/reminder_push.go. It holds the ID of the reminder and
+ * nothing about the message.
+ */
+export interface ReminderPushPayload {
+  v: number;
+  kind: "reminder";
+  reminder_id: string;
+}
+
+/** The plaintext of a push: a message payload or a reminder payload. */
+export type PushPayload = MessagePushPayload | ReminderPushPayload;
+
+/**
+ * What a notification click opens. If the fields are empty, the click opens
+ * the app unchanged. A reminderID stands alone: the page finds the channel
+ * and the message in its reminder set.
+ */
 export interface OpenTarget {
   channelID?: string;
   threadID?: string;
+  reminderID?: string;
 }
 
 export interface NotificationSpec {
@@ -40,13 +59,19 @@ const GENERIC_TAG = "chalk-push";
 
 /**
  * parsePushPayload returns the payload. It returns null if data is not a
- * version-1 message payload. The caller must still show a notification for
- * null, because iOS revokes a subscription that receives pushes without one.
+ * version-1 message payload or a version-1 reminder payload with a valid ID.
+ * The caller must still show a notification for null, because iOS revokes a
+ * subscription that receives pushes without one.
  */
 export function parsePushPayload(data: unknown): PushPayload | null {
   if (typeof data !== "object" || data === null) return null;
   const p = data as Record<string, unknown>;
-  if (p.v !== 1 || p.kind !== "message") return null;
+  if (p.v !== 1) return null;
+  if (p.kind === "reminder") {
+    if (typeof p.reminder_id !== "string" || !ID_RE.test(p.reminder_id)) return null;
+    return { v: 1, kind: "reminder", reminder_id: p.reminder_id };
+  }
+  if (p.kind !== "message") return null;
   if (typeof p.channel_id !== "string" || typeof p.message_id !== "string") return null;
   return {
     v: 1,
@@ -65,11 +90,26 @@ export function parsePushPayload(data: unknown): PushPayload | null {
  * notificationFor returns the notification for a payload. For null it
  * returns the generic notification. The tags match the in-app banners
  * (notify/banners.ts), so a second push for the same channel or thread
- * replaces the first.
+ * replaces the first. A reminder notification leaves the app badge
+ * unchanged.
  */
 export function notificationFor(p: PushPayload | null, icon?: string): NotificationSpec {
   if (!p) {
     return { title: "chalk", options: { body: "New activity", tag: GENERIC_TAG, icon, data: {} }, badge: null };
+  }
+  if (p.kind === "reminder") {
+    // 87-8: The worker has no key, so it cannot show the message. The tag is
+    // the tag of the in-app reminder banner, so one replaces the other.
+    return {
+      title: "chalk",
+      options: {
+        body: "Reminder: a message is due",
+        tag: `chalk-rem-${p.reminder_id}`,
+        icon,
+        data: { reminderID: p.reminder_id },
+      },
+      badge: null,
+    };
   }
   const sender = p.sender_handle ? `@${p.sender_handle}` : "someone";
   let title: string;
@@ -92,6 +132,7 @@ export function clickTarget(data: unknown): OpenTarget {
   const out: OpenTarget = {};
   if (typeof d.channelID === "string" && d.channelID) out.channelID = d.channelID;
   if (typeof d.threadID === "string" && d.threadID && out.channelID) out.threadID = d.threadID;
+  if (typeof d.reminderID === "string" && d.reminderID) out.reminderID = d.reminderID;
   return out;
 }
 
@@ -101,11 +142,15 @@ const ID_RE = /^[A-Za-z0-9-]{1,64}$/;
 
 /**
  * openURL returns the URL that the worker opens when no chalk window exists.
- * It is "/?open=<channel>&thread=<thread>" for a valid target. The thread
- * part is left out if threadID is missing or invalid. It returns "/" if
- * channelID is missing or invalid.
+ * If reminderID is valid, it is "/?reminder=<id>". Otherwise it is
+ * "/?open=<channel>&thread=<thread>" for a valid target. The thread part is
+ * left out if threadID is missing or invalid. It returns "/" if channelID
+ * is missing or invalid.
  */
 export function openURL(t: OpenTarget): string {
+  if (t.reminderID && ID_RE.test(t.reminderID)) {
+    return `/?${new URLSearchParams({ reminder: t.reminderID }).toString()}`;
+  }
   if (!t.channelID || !ID_RE.test(t.channelID)) return "/";
   const q = new URLSearchParams({ open: t.channelID });
   if (t.threadID && ID_RE.test(t.threadID)) q.set("thread", t.threadID);
@@ -114,11 +159,14 @@ export function openURL(t: OpenTarget): string {
 
 /**
  * parseOpenURL returns the target in a query string that openURL made.
- * It returns null if the "open" value is missing or invalid. It ignores an
- * invalid "thread" value.
+ * If the "reminder" value is valid, the target is that reminder alone.
+ * Otherwise it returns null if the "open" value is missing or invalid. It
+ * ignores an invalid "thread" value.
  */
 export function parseOpenURL(search: string): OpenTarget | null {
   const q = new URLSearchParams(search);
+  const reminderID = q.get("reminder") ?? "";
+  if (ID_RE.test(reminderID)) return { reminderID };
   const channelID = q.get("open") ?? "";
   if (!ID_RE.test(channelID)) return null;
   const threadID = q.get("thread") ?? "";

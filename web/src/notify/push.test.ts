@@ -132,3 +132,8 @@ test("push errors map to settings text by their code", () => {
   assert.equal(pushErrorText(new Error("boom")), "push failed: boom");
   assert.equal(pushErrorText("x"), "push failed: x");
 });
+
+test("a chalk-open message with a reminder opens it without a channel", () => {
+  assert.deepEqual(openTargetFromMessage({ type: "chalk-open", reminderID: "r1" }), { reminderID: "r1" });
+  assert.equal(openTargetFromMessage({ type: "other", reminderID: "r1" }), null);
+});

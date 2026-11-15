@@ -132,7 +132,7 @@ export function openTargetFromMessage(data: unknown): OpenTarget | null {
   if (typeof data !== "object" || data === null) return null;
   if ((data as { type?: unknown }).type !== OPEN_MESSAGE) return null;
   const t = clickTarget(data);
-  return t.channelID ? t : null;
+  return t.channelID || t.reminderID ? t : null;
 }
 
 /** What the push settings can offer on this device. */

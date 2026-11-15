@@ -304,6 +304,12 @@ func (s *Server) Serve(ctx context.Context) error {
 			defer wg.Done()
 			s.pushD.run(bgCtx)
 		}()
+		// 87-8: push the reminders that become due while chalk is closed.
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.pushD.runReminderSweep(bgCtx, reminderSweepInterval)
+		}()
 	}
 
 	// Partition maintenance.

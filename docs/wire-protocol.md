@@ -154,11 +154,14 @@ The server sends each push to the push service as an RFC 8291 encrypted body.
 The server pads the plaintext to 1024 bytes before encryption, so every body has one length.
 The plaintext is one JSON object.
 It has no field for message content.
+The `kind` field says which fields follow.
+
+For `kind` `message`, the fields are:
 
 | Field | Meaning |
 |---|---|
 | `v` | The version. Always 1 |
-| `kind` | The kind. Always `message` |
+| `kind` | The kind. `message` |
 | `channel_id` | The channel of the message |
 | `message_id` | The message |
 | `thread_id` | The thread of the message. Absent if the message is not in a thread |
@@ -166,6 +169,18 @@ It has no field for message content.
 | `channel_name` | The channel name, cut to 80 characters. Absent for a direct message |
 | `is_dm` | True for a direct message |
 | `unread` | The badge count for the recipient, at most 99 |
+
+For `kind` `reminder` (phase 87-8), the object has three fields and no other:
+
+| Field | Meaning |
+|---|---|
+| `v` | The version. Always 1 |
+| `kind` | The kind. `reminder` |
+| `reminder_id` | The ID of the reminder. It names no message and no channel |
+
+The server sends a reminder push once for each wake record, when the sweep claims it.
+The push has no `Topic` header and the urgency `high`.
+The service worker shows the constant text "Reminder: a message is due".
 
 The service worker parses this object in `parsePushPayload` (`web/src/sw-logic.ts`).
 For anything else, it shows a generic notification.
@@ -178,6 +193,14 @@ Both ids match `^[A-Za-z0-9-]{1,64}$`.
 The worker and the page both check them.
 If the channel id is not valid, the worker opens `/`.
 The page drops the query from the address when it loads.
+
+A click on a reminder notification opens `/?reminder=<id>` (phase 87-8).
+The id matches the same pattern.
+The `reminder` parameter stands alone.
+If it is present and valid, the page ignores `open` and `thread`.
+The page finds the channel and the message in its reminder set.
+If the reminder is not in the set, the page drops the id.
+If a chalk window is open, the worker posts a `chalk-open` message with the reminder id to it, and opens no URL.
 
 ## Encoding
 

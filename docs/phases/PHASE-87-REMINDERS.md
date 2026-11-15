@@ -2,15 +2,15 @@
 
 A way to say "not now, but don't let me lose this" about a single message,
 without answering it, copying it somewhere, or leaving the channel unread as a
-to-do list. Designed against v0.7.2. **IN PROGRESS: slices 87-1 to 87-7 are
-built, and slices 87-8 and 87-9 are open.** The design was written on 4 August 2026 and
+to-do list. Designed against v0.7.2. **IN PROGRESS: slices 87-1 to 87-8 are
+built, and slice 87-9 is open.** The design was written on 4 August 2026 and
 revised on 15 November 2026. The revision changed the presets and added a push
 to a closed app. Each later slice starts with a new check of the code and a
 new decision from the user.
 
-**Status:** in progress, 87-1 to 87-7 built, design revised on 15 November 2026.
+**Status:** in progress, 87-1 to 87-8 built, design revised on 15 November 2026.
 **Tag:** `#reminders` → `tools/where.sh -g reminders` (it finds this file and
-the files of slices 87-1 to 87-7).
+the files of slices 87-1 to 87-8).
 
 ## The problem
 
@@ -113,9 +113,9 @@ What follows from it:
 - **Slices 87-1 to 87-6 have no migration, no wire frames, and no server code.**
   Phase 86's reserved `migrations/0051_message_ties.sql` stays reserved. In
   those slices phase 87 does not take a migration number because it does not have
-  a table, and `go build` output is byte-identical before and after them. Slices
-  87-7 added migration 0065 and one frame. 87-8 adds a sweep loop (see *The
-  wake record on the server*).
+  a table, and `go build` output is byte-identical before and after them. Slice
+  87-7 added migration 0065 and one frame. 87-8 added a sweep loop (see *The
+  push*).
 - **The prefs key change is opaque to the server**, indistinguishable from a
   notification-rule edit. The blob does not tell the server which message a
   reminder points at, or when it is due.
@@ -176,7 +176,7 @@ the text. The table `message_reminders` and `sealJSONForChannel` stay rejected.
 
 The sealed prefs blob `reminders_enc` stays the only place that holds a
 reminder. The server gets one more record for each pending reminder, a wake
-record (a due time with a random ID). Slices 87-7 and 87-8 build it.
+record (a due time with a random ID). Slices 87-7 and 87-8 built it.
 
 - The record holds the user ID, the reminder ID, and the due time.
 - The reminder ID is a random UUID from the client. It names no message and no
@@ -223,19 +223,42 @@ instance where the operator has push off (`push_enabled` is false in
 
 ### The push
 
-A sweep loop in `chalkd` finds the wake records that are due.
-`EphemeralJanitorLoop` in `internal/store/channel_purge.go` is the model for the
-loop. For each due record the server does these steps:
+`pushDispatcher.sweepReminders` in `internal/server/reminder_push.go` finds the
+wake records that are due. `runReminderSweep` runs it once at the start and
+then every 15 seconds (`reminderSweepInterval`), so a push is at most about 15
+seconds late. `Serve` starts the loop beside the push workers, and only when
+push is on. A sweep that claims a full batch of 200 records is followed by the
+next sweep at once. For the due records, the server does these steps:
 
-1. It deletes the record.
-2. If the user has a device in state `online`, it stops. The open client fires
-   the reminder.
-3. If not, it sends one push with `kind: "reminder"` and the reminder ID to each
-   subscription of the user.
+1. It claims the records. `Store.ClaimDueReminderWakes` deletes up to a limit
+   of records with a due time at or before now, earliest first, and returns
+   them. It uses `FOR UPDATE SKIP LOCKED`, so two `chalkd` instances on one
+   database never both get a record. It deletes the due records of a blocked
+   or soft-deleted user and does not return them.
+2. If the user has a device in state `online`, it sends nothing for that user.
+   The open client fires the reminder.
+3. For every other user, it sends one push for each record to each live
+   subscription with the current VAPID key. The scope of the subscription,
+   `dms` or `all`, does not matter, because a reminder is not a channel
+   message.
+
+The plaintext is `{"v":1,"kind":"reminder","reminder_id":"<uuid>"}` and nothing
+else. The options are a time to live of 24 hours and the urgency `high`. The
+push has no `Topic` header, because each reminder is pushed once and the
+message pushes share one topic, so a topic would let pushes replace each
+other. There is no cooldown. A 410 answer from the push service prunes the
+subscription, as for a message push.
+
+The record is deleted when the sweep claims it, so a push that fails is not
+sent again.
 
 The service worker has no key, so the notification cannot show the message
-text. It shows one constant line, for example "Reminder: a message is due". A
-click opens chalk. The page finds the reminder by its ID in the sealed set and
+text. It shows the title "chalk" and the body "Reminder: a message is due".
+The tag is `chalk-rem-<id>`, the tag of the in-app reminder banner, so one
+replaces the other on a device. The notification leaves the app badge
+unchanged. A click opens chalk. If a chalk window is open, the worker posts
+the `chalk-open` message with the reminder ID to it. If not, the worker opens
+`/?reminder=<id>`. The page finds the reminder by its ID in the sealed set and
 starts the jump to the message. The jump is the existing `setFlashMessage` path
 in `web/src/components/App.tsx`.
 
@@ -702,14 +725,74 @@ end.
     subscribes to push. It is created when a device sends the frame again, at
     the next welcome or the next change.
   - Known limit: a user who is soft-deleted keeps rows until the purge. The
-    sweep of 87-8 must skip them.
+    sweep of 87-8 skips them.
   - Known limit: for a user with push on, the due times are visible to the
     server and in the database. Slice 87-9 records this in
     `docs/threat-model.md`.
   - The push reconcile of phase 65 drops a server subscription that the browser
     does not have. That empties the wake set through the same trigger.
-- **87-8 — the push.** The sweep loop, the `reminder` push kind, the service
-  worker text, and the click-to-jump path. Server code.
+- **87-8 — the push. BUILT.** The files are
+  `internal/store/reminder_wake.go`, `internal/server/reminder_push.go`,
+  `internal/server/push_dispatch.go`, `internal/server/server.go`,
+  `web/src/sw-logic.ts`, `web/src/sw.ts`, `web/src/notify/push.ts`,
+  `web/src/chat/reminder-wake.ts`, and `web/src/components/App.tsx`, with
+  tests beside them. The sweep, the claim, the plaintext, and the options are
+  in *The push*.
+  - Server: `ClaimDueReminderWakes(ctx, now, limit)` is the claim.
+    `pushDispatcher.sweepReminders` sends. `runReminderSweep` runs at the
+    start and every 15 seconds, and `Serve` starts it beside the push workers
+    only when push is on.
+  - Worker: `PushPayload` is now a union of the message payload and
+    `ReminderPushPayload`. `parsePushPayload` accepts `kind: "reminder"` with a
+    valid ID. `notificationFor` gives the title "chalk", the body "Reminder: a
+    message is due", the tag `chalk-rem-<id>`, and the data `{reminderID}`, and
+    leaves the app badge unchanged. `OpenTarget` has a `reminderID`.
+    `clickTarget`, `openURL` (`/?reminder=<id>`), and `parseOpenURL` handle it.
+    `sw.ts` posts the open message also for a target with only a `reminderID`,
+    and `openTargetFromMessage` in `push.ts` accepts it.
+  - Page: a cold-start effect in `App.tsx` waits until the reminder set is
+    settled and state holds the channel of the reminder, and then jumps. If the
+    channel does not come within 8 seconds, the jump runs anyway and the
+    Reminders panel opens. The page drops an ID that the set does not hold.
+    `jumpReminderRef` treats a reminder that is due and not yet fired on this
+    device as fired, so the jump marks it done.
+  - `onJumpReminder` now sends `set_active_channel` also when the view is
+    parked, because a parked view shows no feed. This also corrects "show
+    message" in the Reminders panel while parked.
+  - `wakeSet(list, nowMs)` now leaves out a reminder whose due time is past.
+    The open client fires it, and a wake record for it would only make the
+    server store and claim it again.
+  - Tests: `internal/server/reminder_push_test.go` (away users get the push,
+    online users and users without a subscription do not, the payload has
+    exactly three fields, the options, two reminders give two pushes with no
+    cooldown, the 410 prune, the claim error, and the loop stops with the
+    context), the claim subtest in `internal/store/reminder_wake_test.go`, and
+    new cases in `web/src/sw-logic.test.ts`, `web/src/notify/push.test.ts`,
+    and `web/src/chat/reminder-wake.test.ts`.
+  - Check on 15 November 2026 against a dev stack with push on, in headless
+    Chromium. The worker showed the constant line, the tag, and the data for a
+    reminder push that the DevTools protocol delivered. A `chalk-open` message
+    with a reminder ID made the open page jump to the message and flash it. A
+    cold start at `/?reminder=<id>`, for a reminder that became due while the
+    page was not open, jumped to the message, removed the query from the address,
+    and marked the reminder done. With the page closed and no device online,
+    the sweep claimed a due wake record within the interval and tried the push.
+    The send failed, as expected for a fake subscription key. A record due in
+    two days stayed.
+  - Not checked: a real push through a push service to a closed browser or to a
+    phone, a real click on the notification (the focus-or-open branch of the
+    worker), the online case end to end (only the unit test covers it), and a
+    phone.
+  - Known limit: a reminder that fires by push stays pending in the sealed set
+    until a device opens chalk. It then fires as overdue with the sound and the
+    banner, unless the user came in through the click on the notification.
+  - Known limit: an open device that is idle or hidden counts as not online
+    after presence demotes it. The server then pushes while the page also
+    fires the reminder. The shared tag makes one notification replace the other
+    on that device.
+  - Known limit: if the operator turns push off later, the sweep does not run,
+    and old wake records stay until the subscriptions of the user go.
+  - Known limit: the push service sees a high-urgency push at the due time.
 - **87-9 — the record.** `docs/tags.md`, `docs/phase-log.md`,
   `docs/threat-model.md`, and `docs/wire-protocol.md`. The threat model gets the
   facts of *What the server and the push service learn*, so the claim is written
@@ -840,7 +923,8 @@ Three checks stay open:
 - Jump to a message that is not loaded, and check the crawl.
 - Check a reminder whose channel is gone.
 
-After slices 87-7 and 87-8, add these steps for the closed app:
+Slices 87-7 and 87-8 add these steps for the closed app. They are open, and
+nobody has done them on a real push service or a phone:
 
 11. A user with a push subscription sets a reminder and closes chalk on a phone.
     At the due time the phone shows the notification with the constant line.

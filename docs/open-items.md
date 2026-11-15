@@ -489,7 +489,7 @@ subscribe.
   was made with, and the dispatcher lists only rows that match the current
   key. 65-5 must pass the current key to `ListPushSubscriptionsForUsers`.
 
-## Phase 87 — message reminders: IN PROGRESS, 87-1 to 87-7 built
+## Phase 87 — message reminders: IN PROGRESS, 87-1 to 87-8 built
 
 Message reminders bring one message back later. 87-1 is built: the pure rules
 in `web/src/chat/reminders.ts`, with tests. 87-2 is built: the sealed prefs
@@ -508,10 +508,12 @@ was closed, a due reminder gets a dot on the reminders entry, shows as due
 in the list, and counts in the tab title and the app badge. 87-6 added the sound, the
 banner, and a row for reminders in the notification settings, for a reminder
 that becomes due while chalk is open. 87-7 added the wake record: the table
-`reminder_wakes`, the frame `reminder_wakes_set`, and the client send. Nothing
-reads the table yet. Slices 87-8 and 87-9 are open. 87-8 adds the sweep loop and
-the push for a closed app, and 87-9 adds the threat-model record. Until 87-8
-nothing fires while chalk is closed. The reminder plays the cue of a new message. A cue of its own for a
+`reminder_wakes`, the frame `reminder_wakes_set`, and the client send. 87-8 added
+the push for a closed app: a sweep loop in `chalkd` claims the due wake records
+every 15 seconds, and for a user with no device online it sends one push for
+each record to each subscription. The push shows a constant line, and a click
+opens chalk at the message. Slice 87-9 is open: the threat-model record and the
+phase log. Without push on, nothing fires while chalk is closed. The reminder plays the cue of a new message. A cue of its own for a
 reminder is open, and it needs a new file in each theme. The browser check of 87-3 and the
 check of 87-4 are done on a desktop viewport. These checks stay open:
 
@@ -523,15 +525,32 @@ check of 87-4 are done on a desktop viewport. These checks stay open:
 - 87-4: a reminder whose channel is gone.
 - 87-5: the app badge of an installed chalk, and the dot on the phone head button.
 - 87-6: the sound at the due time, the banner close from another device, the settings row, do-not-disturb, and the privacy screen.
+- 87-8: a real push through a push service to a closed browser and to a phone.
+- 87-8: a real click on the notification (the focus-or-open branch of the worker).
+- 87-8: the online case end to end. Only the unit test covers it.
+- 87-8: a phone.
 
 These limits of 87-7 stay open:
 
 - The wake set of a user is not created when another device subscribes to push,
   until one device sends the frame again at the next welcome or change.
-- The rows of a user in the soft-delete state stay until the purge. The sweep of 87-8 must
-  skip them.
+- The rows of a user in the soft-delete state stay until the purge. The sweep of 87-8
+  skips them.
 - The due times are visible to the server and in the database for a user with
   push on. 87-9 records this in `docs/threat-model.md`.
+
+These limits of 87-8 stay open:
+
+- A reminder that fires by push stays pending in the sealed set until a device
+  opens chalk. It then fires as overdue, with the sound and the banner, unless
+  the user came in through the click on the notification.
+- An open device that is idle or hidden counts as not online after presence
+  demotes it. The server then pushes while the page also fires the reminder.
+  The shared tag makes one notification replace the other on that device.
+- If the operator turns push off later, the sweep does not run. Old wake
+  records stay until the subscriptions of the user go.
+- The push service sees a high-urgency push at the due time.
+- A push that fails is not sent again, because the claim deletes the record.
 
 Record in
 [phases/PHASE-87-REMINDERS.md](phases/PHASE-87-REMINDERS.md).

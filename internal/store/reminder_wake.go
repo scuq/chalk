@@ -115,3 +115,48 @@ func (s *Store) ListReminderWakes(ctx context.Context, userID uuid.UUID) ([]Remi
 	}
 	return out, rows.Err()
 }
+
+// A DueReminderWake is one wake record that ClaimDueReminderWakes took.
+type DueReminderWake struct {
+	UserID     uuid.UUID
+	ReminderID uuid.UUID
+}
+
+// ClaimDueReminderWakes deletes up to limit wake records with a due time at
+// or before now, earliest first, and returns them. A record is returned to
+// one caller only, so two chalkd instances on one database do not both send
+// its push.
+//
+// It deletes the due records of a blocked or soft-deleted user and does not
+// return them.
+func (s *Store) ClaimDueReminderWakes(ctx context.Context, now time.Time, limit int) ([]DueReminderWake, error) {
+	rows, err := s.Pool.Query(ctx,
+		`WITH due AS (
+		   DELETE FROM reminder_wakes
+		    WHERE (user_id, reminder_id) IN (
+		      SELECT user_id, reminder_id FROM reminder_wakes
+		       WHERE due_at <= $1
+		       ORDER BY due_at
+		       LIMIT $2
+		       FOR UPDATE SKIP LOCKED)
+		   RETURNING user_id, reminder_id, due_at)
+		 SELECT due.user_id, due.reminder_id
+		   FROM due
+		   JOIN users u ON u.id = due.user_id
+		  WHERE u.blocked_at IS NULL AND u.deleted_at IS NULL
+		  ORDER BY due.due_at, due.reminder_id`,
+		now, limit)
+	if err != nil {
+		return nil, fmt.Errorf("claim reminder wakes: %w", err)
+	}
+	defer rows.Close()
+	var out []DueReminderWake
+	for rows.Next() {
+		var w DueReminderWake
+		if err := rows.Scan(&w.UserID, &w.ReminderID); err != nil {
+			return nil, fmt.Errorf("claim reminder wakes: %w", err)
+		}
+		out = append(out, w)
+	}
+	return out, rows.Err()
+}

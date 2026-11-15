@@ -33,6 +33,8 @@ type fakePushData struct {
 	gotUsers  []uuid.UUID
 	deleted   []uuid.UUID
 	touched   []uuid.UUID
+	dueWakes  []store.DueReminderWake // 87-8: claimed once, then empty
+	claimErr  error
 }
 
 func (f *fakePushData) message(context.Context, time.Time, uuid.UUID) (store.Message, error) {
@@ -70,6 +72,15 @@ func (f *fakePushData) deleteSubscription(_ context.Context, id uuid.UUID) error
 func (f *fakePushData) touchSubscription(_ context.Context, id uuid.UUID) error {
 	f.touched = append(f.touched, id)
 	return nil
+}
+func (f *fakePushData) claimReminderWakes(_ context.Context, _ time.Time, limit int) ([]store.DueReminderWake, error) {
+	if f.claimErr != nil {
+		return nil, f.claimErr
+	}
+	n := min(limit, len(f.dueWakes))
+	out := f.dueWakes[:n]
+	f.dueWakes = f.dueWakes[n:]
+	return out, nil
 }
 
 type sentPush struct {

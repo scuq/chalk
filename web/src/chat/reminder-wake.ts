@@ -9,12 +9,14 @@ import type { Reminder } from "./reminders";
 
 /**
  * wakeSet returns one wake record for each reminder of list that is not
- * fired and not done. The order is by ID, so two equal sets give the same
- * wakeKey.
+ * fired, not done, and not yet due at nowMs. The open client fires a
+ * reminder whose due time has passed. A wake record for it would only make
+ * the server store and claim it again. The order is by ID, so two equal sets
+ * give the same wakeKey.
  */
-export function wakeSet(list: readonly Reminder[]): ReminderWake[] {
+export function wakeSet(list: readonly Reminder[], nowMs: number): ReminderWake[] {
   return list
-    .filter((r) => r.firedAt === null && r.doneAt === null)
+    .filter((r) => r.firedAt === null && r.doneAt === null && r.dueAt > nowMs)
     .map((r) => ({ id: r.id, due_at: r.dueAt }))
     .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }

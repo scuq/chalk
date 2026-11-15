@@ -740,6 +740,8 @@ export function App() {
     }
   }, []);
   // 65-9: wait until state holds the channel, then open the target once.
+  // A reminder target has no channelID. The 87-8 effect that follows the
+  // wake set opens it.
   useEffect(() => {
     const t = pendingOpenRef.current;
     if (!t?.channelID || !state.channels[t.channelID]) return;
@@ -2091,7 +2093,7 @@ export function App() {
     if (!remindersUID || !remindersSettled || !pushEnabled) return undefined;
     const c = clientRef.current;
     if (!c || !c.isSealed()) return undefined;
-    const wakes = wakeSet(reminders);
+    const wakes = wakeSet(reminders, Date.now());
     const key = wakeKey(wakes);
     if (key === wakeSentRef.current) return undefined;
     wakeSentRef.current = key;
@@ -2106,6 +2108,27 @@ export function App() {
     });
     return () => window.clearTimeout(retry);
   }, [state.wsState, remindersUID, remindersSettled, pushEnabled, reminders, wakeEpoch]);
+  // 87-8: the cold start from a reminder push. The worker opens
+  // "/?reminder=<id>". The jump reads the reminder set and the channel list.
+  // It waits until the set is settled and state holds the channel of the
+  // reminder. If the channel does not come within 8 s, the jump runs anyway
+  // and the Reminders panel opens. The jump drops an ID that the set does not
+  // hold.
+  useEffect(() => {
+    const t = pendingOpenRef.current;
+    if (!t?.reminderID || !remindersUID || !remindersSettled) return undefined;
+    const go = () => {
+      pendingOpenRef.current = null;
+      openFromNotification(t);
+    };
+    const r = reminders.find((x) => x.id === t.reminderID);
+    if (!r || state.channels[r.channelID]) {
+      go();
+      return undefined;
+    }
+    const timer = window.setTimeout(go, 8000);
+    return () => window.clearTimeout(timer);
+  }, [remindersUID, remindersSettled, reminders, state.channels, openFromNotification]);
   // 87-6: the banner of a reminder closes when the reminder is no longer
   // fired and open: done or snoozed, on this device or on another one.
   const firedBannerIDs = useRef<Set<string>>(new Set());
@@ -6038,7 +6061,9 @@ export function App() {
     if (!state.channels[r.channelID]) return;
     dispatch({ kind: "close_panel" });
     if (r.firedAt !== null) onDoneReminder(r);
-    if (r.channelID !== state.activeChannelID) {
+    // 87-8: a parked view shows no feed. set_active_channel also ends the
+    // parked state, so the jump sends it for the active channel too.
+    if (r.channelID !== state.activeChannelID || state.parked) {
       dispatch({ kind: "set_active_channel", channelID: r.channelID });
     }
     setFlashMessage({ channelID: r.channelID, messageID: r.messageID, seq: r.seq });
@@ -6053,7 +6078,10 @@ export function App() {
       dispatch({ kind: "open_panel", panel: "reminders" });
       return;
     }
-    onJumpReminder(r);
+    // 87-8: after a push, the reminder can be due and not yet fired here.
+    // The jump then counts as the fire, so onJumpReminder marks it done.
+    const now = Date.now();
+    onJumpReminder(r.firedAt === null && r.dueAt <= now ? { ...r, firedAt: now } : r);
     setZuckerScreen("chat");
   };
 
