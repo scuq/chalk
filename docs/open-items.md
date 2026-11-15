@@ -489,33 +489,14 @@ subscribe.
   was made with, and the dispatcher lists only rows that match the current
   key. 65-5 must pass the current key to `ListPushSubscriptionsForUsers`.
 
-## Phase 87 — message reminders: IN PROGRESS, 87-1 to 87-8 built
+## Phase 87 — message reminders: built, open items remain
 
-Message reminders bring one message back later. 87-1 is built: the pure rules
-in `web/src/chat/reminders.ts`, with tests. 87-2 is built: the sealed prefs
-blob, its sync across devices, and the local store. 87-3 added the "remind
-me..." menu item, the modal, the clock mark on a message row, and the retirement of
-a reminder when its message is gone. The presets are this evening,
-tomorrow morning, tomorrow evening, weekend, next Monday, and a custom time.
-The whole set of reminders lives in a sealed prefs blob, and the ceiling is 25
-reminders. For a user with web push, the server also holds a wake record for
-each pending reminder, so that a reminder fires when chalk is closed. The
-record holds a due time and a random ID, and no message. 87-4 added the
-Reminders row in the sidebar, the button in the head of the conversation list on
-a phone, and the panel with jump, snooze, and done. 87-5 added firing: while
-chalk is open, and at the next load for a reminder that became due while chalk
-was closed, a due reminder gets a dot on the reminders entry, shows as due
-in the list, and counts in the tab title and the app badge. 87-6 added the sound, the
-banner, and a row for reminders in the notification settings, for a reminder
-that becomes due while chalk is open. 87-7 added the wake record: the table
-`reminder_wakes`, the frame `reminder_wakes_set`, and the client send. 87-8 added
-the push for a closed app: a sweep loop in `chalkd` claims the due wake records
-every 15 seconds, and for a user with no device online it sends one push for
-each record to each subscription. The push shows a constant line, and a click
-opens chalk at the message. Slice 87-9 is open: the threat-model record and the
-phase log. Without push on, nothing fires while chalk is closed. The reminder plays the cue of a new message. A cue of its own for a
-reminder is open, and it needs a new file in each theme. The browser check of 87-3 and the
-check of 87-4 are done on a desktop viewport. These checks stay open:
+Slices 87-1 to 87-9 are built. [phase-log.md](phase-log.md) has the summary.
+Without push on, nothing fires while chalk is closed. The reminder plays the
+cue of a new message. A cue of its own for a reminder is open. It needs a new
+sound file in each theme, which only the project owner makes, so it is not code
+work. The browser checks of 87-3 to 87-6 passed in part on a desktop viewport. These
+manual checks stay open:
 
 - 87-3: the phone viewport (the inline mark and the long-press menu).
 - 87-3: the cap message at 25.
@@ -537,7 +518,8 @@ These limits of 87-7 stay open:
 - The rows of a user in the soft-delete state stay until the purge. The sweep of 87-8
   skips them.
 - The due times are visible to the server and in the database for a user with
-  push on. 87-9 records this in `docs/threat-model.md`.
+  push on. `docs/threat-model.md` records this, in the section "Reminder wake
+  records".
 
 These limits of 87-8 stay open:
 

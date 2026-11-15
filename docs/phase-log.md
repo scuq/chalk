@@ -78,7 +78,7 @@ as-built rather than a contemporaneous plan.
 | 84 | identity-pin backup | [PHASE-84-PINBACKUP.md](phases/PHASE-84-PINBACKUP.md) |
 | 85 | operational logging | [PHASE-85-OPLOG.md](phases/PHASE-85-OPLOG.md) |
 | 86 | ties: answering without quoting — **planned, not started** | [PHASE-86-TIES.md](phases/PHASE-86-TIES.md) |
-| 87 | message reminders *(in progress, 87-1 to 87-4 built)* | [PHASE-87-REMINDERS.md](phases/PHASE-87-REMINDERS.md) |
+| 87 | message reminders *(built, with a reminder sound cue and manual browser checks open)* | [PHASE-87-REMINDERS.md](phases/PHASE-87-REMINDERS.md) |
 | 88 | federation — **considered and declined** | [PHASE-88-FEDERATION.md](phases/PHASE-88-FEDERATION.md) |
 | 89 | the friend-request hint | [PHASE-89-REQUESTHINT.md](phases/PHASE-89-REQUESTHINT.md) |
 | 90 | a local idle agent — **planned, not started** | [PHASE-90-IDLEEXT.md](phases/PHASE-90-IDLEEXT.md) |
@@ -893,6 +893,24 @@ a right-click, with notifications, hide, group, and the owner's rename. 135-9
 parks the microphone and camera of a call when the connection drops, so the
 rejoin does not capture again and an installed iOS app does not show the
 permission prompt again. Every change is in the client. The device checks are open.
+
+**87 — message reminders** (2026-11-15). A user had no private way to bring
+one message back later. 87-1 added the rules: five presets and a custom time,
+the merge of two sets, and the budget fit. 87-2 added the sealed prefs blob
+`reminders_enc`, its sync across devices, and a local store for each user. 87-3
+added "remind me..." to the message menu, a modal, and a clock mark on the
+row. 87-4 added the Reminders entry, the panel with jump, snooze, and done, and
+the button in the head of the phone list. 87-5 added firing while chalk is
+open, and the dot and the count for a due reminder. 87-6 added the sound, the
+banner, and the `reminder` row in the notification settings. 87-7 added the
+table `reminder_wakes` and the frame `reminder_wakes_set`. 87-8 added a sweep
+loop that sends a push for a due reminder when no device of the user is
+online, and a click on the notification opens chalk at the message. 87-9
+recorded the due times as metadata in `docs/threat-model.md`. The server holds
+a wake record only for a user with web push. The record holds a due time and a
+random ID, and no message. The sound plays the cue of a new message, and a cue
+of its own is open. The manual browser checks are open, and
+[open-items.md](open-items.md) lists them.
 
 **Not started.** 86 (ties), 90 (a local idle agent) and 99 (database-credential
 hardening, the R18 mitigation) — each planned in its own `PHASE-*.md`, and each marked

@@ -2,15 +2,17 @@
 
 A way to say "not now, but don't let me lose this" about a single message,
 without answering it, copying it somewhere, or leaving the channel unread as a
-to-do list. Designed against v0.7.2. **IN PROGRESS: slices 87-1 to 87-8 are
-built, and slice 87-9 is open.** The design was written on 4 August 2026 and
+to-do list. Designed against v0.7.2. **BUILT, with open items: slices 87-1 to
+87-9 are built.** A sound cue of its own and the manual browser checks stay
+open (see *Open items the design leaves* and *Verification, when built*). The design was written on 4 August 2026 and
 revised on 15 November 2026. The revision changed the presets and added a push
-to a closed app. Each later slice starts with a new check of the code and a
+to a closed app. Each later slice started with a new check of the code and a
 new decision from the user.
 
-**Status:** in progress, 87-1 to 87-8 built, design revised on 15 November 2026.
+**Status:** built, 87-1 to 87-9 built, design revised on 15 November 2026. A
+reminder sound cue and the manual browser checks are open.
 **Tag:** `#reminders` → `tools/where.sh -g reminders` (it finds this file and
-the files of slices 87-1 to 87-8).
+the files of slices 87-1 to 87-9).
 
 ## The problem
 
@@ -264,7 +266,8 @@ in `web/src/components/App.tsx`.
 
 ### What the server and the push service learn
 
-Slice 87-9 repeats these facts in `docs/threat-model.md`.
+`docs/threat-model.md` records these facts, in the section "Reminder wake
+records". Slice 87-9 wrote it.
 
 - The database holds, for a user with push on, the due time of each pending
   reminder and the count.
@@ -727,7 +730,7 @@ end.
   - Known limit: a user who is soft-deleted keeps rows until the purge. The
     sweep of 87-8 skips them.
   - Known limit: for a user with push on, the due times are visible to the
-    server and in the database. Slice 87-9 records this in
+    server and in the database. Slice 87-9 recorded this in
     `docs/threat-model.md`.
   - The push reconcile of phase 65 drops a server subscription that the browser
     does not have. That empties the wake set through the same trigger.
@@ -793,11 +796,24 @@ end.
   - Known limit: if the operator turns push off later, the sweep does not run,
     and old wake records stay until the subscriptions of the user go.
   - Known limit: the push service sees a high-urgency push at the due time.
-- **87-9 — the record.** `docs/tags.md`, `docs/phase-log.md`,
-  `docs/threat-model.md`, and `docs/wire-protocol.md`. The threat model gets the
-  facts of *What the server and the push service learn*, so the claim is written
-  where it will be checked. Slice 87-1 already sets the `#reminders` line in
-  `docs/tags.md` and the row in `docs/phase-log.md`.
+- **87-9 — the record. BUILT.** Documentation only. The files are
+  `docs/threat-model.md`, `docs/phase-log.md`, `docs/open-items.md`,
+  `docs/tags.md`, and this file. No code changed.
+  - `docs/threat-model.md` has a new section, "Reminder wake records". It
+    records that the reminder lives only in the sealed blob and in the local
+    storage of the browser, and that the database holds a due time and a random
+    ID for each pending reminder of a user with push on. It records the push
+    at the due time, the push service view, the stolen-database claim, and the
+    case of an actively malicious `chalkd`. The list of what the server learns,
+    the section "What is actually built", and the section "What the push
+    service learns" have a line each.
+  - The sentence of the push section about equal `Topic`, `TTL`, and `Urgency`
+    values now covers message pushes only, and the sentence about the 60-second
+    limit now says that a reminder push has no such limit.
+  - The `#reminders` line of `docs/tags.md` gained the push files, the
+    threat model, the wire protocol, and the sound doc.
+  - The facts of 87-7 and 87-8 were checked against the code again for this
+    slice. `docs/wire-protocol.md` had its section in slices 87-7 and 87-8.
 
 Slices 87-1 to 87-6 give a reminder that works while chalk is open. Slices 87-7
 and 87-8 add the closed app. Slice 87-7 stores the wake set, and slice 87-8

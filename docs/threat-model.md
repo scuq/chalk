@@ -94,6 +94,12 @@ once and referenced below rather than hedged in every section.
   diffs the membership it sees against the set it last persisted and
   surfaces additions, removals and key changes as "observed" notices
   — recorded before any auto-reshare wraps to a newcomer.
+- A message reminder is held only in the sealed prefs blob `reminders_enc`
+  and in the local storage of the browser (phase 87,
+  `web/src/chat/reminders-sync.ts`). The blob is AES-256-GCM ciphertext under
+  an HKDF of the X25519 identity scalar. chalkd stores the blob and cannot
+  open it. For a user with web push, the database also holds the due time of
+  each pending reminder, as "Reminder wake records" describes.
 
 ## Guarantees not met, or not met unconditionally
 
@@ -235,6 +241,10 @@ The server still sees metadata in every case:
 - which devices of a user subscribed to web push, with the scope of each, and
   when each device last received a push (`last_used_at`), as long as the
   operator has turned push on
+- for a user with one or more push subscriptions, how many reminders are
+  pending and when each is due, if the operator turned push on.
+  It does not see the message, the channel, the sender, or the text (see
+  "Reminder wake records")
 
 ### Stolen credentials
 
@@ -429,11 +439,12 @@ The push service does not learn the content, the sender, or the channel.
 - The payload is padded to one fixed plaintext length. Every body has the
   same size, so the size does not identify a sender or a channel.
 - The `Topic`, `TTL`, and `Urgency` headers have the same value on every
-  push.
+  message push. A reminder push has other values (see "Reminder wake
+  records").
 
-chalkd sends at most one push per user and channel in 60 seconds. The count
-is in process memory, so a restart of chalkd resets it. Each chalkd process
-counts alone.
+chalkd sends at most one message push per user and channel in 60 seconds. The
+count is in process memory, so a restart of chalkd resets it. Each chalkd
+process counts alone. A reminder push has no such limit.
 
 ### What chalkd sends to the browser
 
@@ -456,6 +467,63 @@ chalkd sends a push to a channel member only if all of these are true:
 
 Muted channels still push under scope `all`. The server cannot read the
 sealed notification rules, so this is an accepted property.
+
+### Reminder wake records (phase 87)
+
+A reminder is private to the user. It holds the channel, the message ID, the
+message time, the sequence number, the preview text, and all times. It lives
+only in the sealed prefs blob `reminders_enc` and in the local storage of the
+browser. The blob is AES-256-GCM ciphertext under an HKDF of the X25519
+identity scalar. chalkd stores the blob and cannot open it.
+
+To send a push when chalk is closed, chalkd also holds wake records. The
+table `reminder_wakes` holds a row only if both of these are true:
+
+- The operator turned push on.
+- The user has one or more push subscriptions.
+
+For such a user, the table holds one row for each pending reminder whose due
+time has not passed. A row has three values:
+
+- The user ID.
+- The reminder ID. It is a random UUID that the client makes. It names no
+  message and no channel.
+- The due time.
+
+The server, and anyone who reads the database, therefore learns for these
+users how many reminders are pending and when each is due. They do not learn
+the message, the channel, the sender, or the text. The due times are
+metadata in the database.
+
+A user with no push subscription on any device leaves no row. A database
+trigger deletes the rows of a user when the last subscription of that user
+goes, by any path. The client sets the rows with the frame
+`reminder_wakes_set`. The frame travels only on the sealed channel.
+
+At the due time, the server deletes the row. If a device of the user is in
+state `online`, the server sends nothing, because the open client fires the
+reminder. If no device of the user is online, the server sends one push to
+each subscription made with the current VAPID key. The push has these
+properties:
+
+- The plaintext is `{"v":1,"kind":"reminder","reminder_id":"<uuid>"}`.
+  The payload is encrypted to the browser.
+- The TTL is 24 hours.
+- The `Urgency` is high.
+- There is no `Topic` header.
+
+The notification has only the text "Reminder: a message is due". The service worker
+has no key, so the text cannot hold more. The push service sees one more push at
+that time, with high urgency. A push at exactly 09:00 or 18:00 local time
+(the preset times) can look like a reminder to it.
+
+A stolen database therefore yields no sent message through this feature, so
+claim 2 holds. The due times are metadata in the database.
+
+An actively malicious chalkd is outside the model (see "An actively malicious
+chalkd"). It can send a reminder push at any time with any reminder ID, or
+withhold one. The page acts on a click only if its own sealed set holds that
+ID. It then jumps to the message that the set names.
 
 ### Theft of the VAPID private key
 
