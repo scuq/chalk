@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.12.4 — 15 November 2026 — Push notifications for chat messages on iPhone and iPad
 
 ### Fixed
 - Push notifications for chat messages to an iPhone or iPad failed, because Apple refused a header of the push. The server now sends that header in a form that Apple accepts.
