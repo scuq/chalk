@@ -988,6 +988,8 @@ export interface AppState {
     | "governance"
     // 42-8: the cross-channel thread inbox.
     | "threads"
+    // 87-4: the list of message reminders.
+    | "reminders"
     // 50-4: notification rules + priorities.
     | "notifications"
     // 61-2: message search over what this client holds.
@@ -1382,6 +1384,8 @@ export type Action =
         | "members"
         | "governance"
         | "threads"
+        // 87-4: the list of message reminders.
+        | "reminders"
         | "notifications"
         | "search";
     }

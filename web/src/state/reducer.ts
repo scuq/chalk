@@ -1426,6 +1426,12 @@ export function reducer(state: AppState, action: Action): AppState {
         // the channel keys the previews need; no reducer-owned form state.
         return { ...state, openPanel: "threads" };
       }
+      if (action.panel === "reminders") {
+        // 87-4: the reminders list. The branch must exist. Without it the
+        // fallthrough below opens the profile panel. The reminder set is not
+        // reducer state: App reads it from the local store.
+        return { ...state, openPanel: "reminders" };
+      }
       if (action.panel === "notifications") {
         // 50-4: notification rules. The panel talks to localStorage through
         // useRulesConfig directly; no reducer-owned form state.

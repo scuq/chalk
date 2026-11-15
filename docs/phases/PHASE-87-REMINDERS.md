@@ -2,15 +2,15 @@
 
 A way to say "not now, but don't let me lose this" about a single message,
 without answering it, copying it somewhere, or leaving the channel unread as a
-to-do list. Designed against v0.7.2. **IN PROGRESS: slices 87-1 to 87-3 are
-built, and slices 87-4 to 87-9 are open.** The design was written on 4 August 2026 and
+to-do list. Designed against v0.7.2. **IN PROGRESS: slices 87-1 to 87-4 are
+built, and slices 87-5 to 87-9 are open.** The design was written on 4 August 2026 and
 revised on 15 November 2026. The revision changed the presets and added a push
 to a closed app. Each later slice starts with a new check of the code and a
 new decision from the user.
 
-**Status:** in progress, 87-1 to 87-3 built, design revised on 15 November 2026.
+**Status:** in progress, 87-1 to 87-4 built, design revised on 15 November 2026.
 **Tag:** `#reminders` → `tools/where.sh -g reminders` (it finds this file and
-the files of slices 87-1 to 87-3).
+the files of slices 87-1 to 87-4).
 
 ## The problem
 
@@ -42,8 +42,7 @@ Set it from the message's row menu, on your own message or anybody else's, with
 one of five presets or a time you pick. The presets are **this evening**,
 **tomorrow morning**, **tomorrow evening**, **weekend**, and **next Monday**.
 When T arrives chalk tells you, and a **Reminders** entry carries a badge until
-you have dealt with it. Slice 87-4 selects the place of that entry (see *The
-entry*).
+you have dealt with it. Slice 87-4 built that entry (see *The entry*).
 
 All times are in the local timezone of the browser:
 
@@ -335,16 +334,20 @@ is the existing notify pipeline in `App.tsx` (the `notify/bus.ts` events), uncha
 ## Rendering
 
 **Setting one.** `buildMessageMenu` (`chat/message-menu.ts`) has
-`{ kind: "remind" }` behind a `canRemind` opt, with the label "remind me..." in
-`LABELS` in `MessageMenu.tsx` (the `Record<MessageMenuItem["kind"], string>` is exhaustive,
-so a missing label is a `tsc` error rather than a blank menu row). The item sits
+`{ kind: "remind" }` behind a `canRemind` opt, with the label "remind me..." by
+default. The item carries its own `label`, as the `delete` item does, and
+`MessageMenu.tsx` shows it. The `remind` entry in `LABELS` stays because the
+`Record<MessageMenuItem["kind"], string>` is exhaustive. A message with a
+pending reminder shows "change reminder..." (`remindLabel` in the menu opts). The item sits
 after "copy text" and before "edit". It belongs in
 the **common** group, not the `ownerKinds` set in `MessageMenu.tsx` — it is
 participation, not moderation. The predicate in `MessageList.tsx` is
 `canRemind: Boolean(onRemindMessage)`, a capability check like `canReact`, which is
 what makes it apply to own and others' messages alike.
 
-Picking it opens `ReminderModal`: one button for each preset that is
+Picking it opens `ReminderModal`. If the message has a pending reminder, the
+modal shows "set for <local date and time>" and a "remove" button, and a new
+time replaces the old reminder. The modal body mounts new at each open. Without a pending reminder, the modal has one button for each preset that is
 offered at that time, each with its due time, and a native `<input type="datetime-local">` with `min` at
 now. No dependency and no new picker component; the ephemeral-TTL `<select>`
 (`ttlSecs`) in `CreateChannelModal.tsx` is the nearest precedent for the preset
@@ -352,6 +355,9 @@ row. No inline `style=` — CSP is
 `style-src 'self'`.
 
 **The mark.** A row with a pending reminder carries a small clock. The clock is
+`ReminderIcon` from the shared icon family (`icons.tsx`), in the bright text
+color of the theme. An emoji keeps its own colors and does not match a theme.
+The clock is
 one element, the first child of the body span in `MessageList.tsx`, with the due
 time in its `title`. With a pointer that can hover, it sits in the left gutter
 (`--chalk-msg-gutter` in `theme.css`, the strip that already holds the `⋮`
@@ -365,39 +371,61 @@ shows the mark, from `pendingFor`. The mark has `data-testid="message-reminder-<
 
 **The entry.** A new `chalk-sidebar-section--reminders` block in `Sidebar.tsx`,
 above the parking-lot block and below the friends list — ordering in that file
-is plain JSX source order, no array and no config. It is the threads entry
-(`data-testid="sidebar-threads"`) with a different glyph: title,
-`{firedCount > 0 && <UnreadDot mention={false} />}`,
-`data-testid="sidebar-reminders"`, section chrome copied from
-`.chalk-sidebar-section--threads` in `theme.css`.
+is plain JSX source order, no array and no config. It is its own class family
+(`chalk-sidebar-reminders*`), copied from the threads entry
+(`.chalk-sidebar-section--threads` in `theme.css`) with the `ReminderIcon` glyph.
+It holds the title "reminders", the count of reminders that are not done in
+parentheses, and `{remindersFired > 0 && <UnreadDot mention={false} />}`. It has
+`data-testid="sidebar-reminders"`. It always shows on a desktop, also when the
+count is 0.
 
-The phone list has no parking row after 137-10, because the parking lot became a
-head button. So the phone list has no row to put the Reminders entry above.
-Slice 87-4 selects the place of the Reminders entry on the phone.
-
-Zuckermode re-implements the same entry points as pinned buttons, so it needs the
-row too (the parking and threads buttons in `ZuckerList.tsx` are the model) or the
-feature disappears for anyone using that shell. And like every other sidebar
-entry point, it calls `setNavOpen(false)` before dispatching, or the mobile
-drawer sits on top of the panel it just opened.
+`ZuckerList` mounts only on the phone. The phone list has no parking row after
+137-10, because the parking lot became a head button. So the phone entry is a sixth head button of `ZuckerList.tsx`, between threads and
+filter (`data-testid="zucker-reminders"`), with a dot when a reminder has fired.
+It shows only when one or more reminders are not done, to keep the head short.
+On a phone with no reminder there is no entry. None is necessary, because the
+list would be empty.
 
 **The panel.** `"reminders"` joins the `openPanel` union in **both** places in
 `state/types.ts` — the `openPanel` state field and the `open_panel` action —
-plus the reducer's panel case. `RemindersPanel.tsx` is lazy, on
+plus the reducer's panel case. The reducer branch must exist, because with no
+branch the fallthrough opens the profile panel. `RemindersPanel.tsx` is lazy, on
 `ThreadInboxPanel.tsx`'s pattern: the shared `.chalk-modal-backdrop` /
-`.chalk-modal-card` chrome, `useSwipeBack` on mobile, fired reminders first and
-then pending by due time. A row shows channel, sender, when the message was sent,
-when the reminder is due (`chat/reltime.ts`'s `fmtRelative`), and the preview —
-falling back to the same skeleton treatment the thread inbox uses when the body
-is not available. Row actions: **jump**, **snooze** with the presets of the
-table above, **done**.
+`.chalk-modal-card` chrome, and `useSwipeBack` on mobile. It reuses the thread
+inbox classes `chalk-threadinbox-panel`, `-header`, `-title`, `-actions`,
+`-empty`, and `-empty-hint`, and has its own `chalk-reminders-*` classes for the
+rows. It lists each reminder that is not done: the fired reminders first, the
+latest fired first, then the pending reminders, the earliest due time first
+(`panelRows`, the order that `fitReminders` keeps).
 
-**The jump** reuses the 49-1 chain verbatim: `close_panel` →
-`set_active_channel` → `setFlashMessage({channelID, messageID, seq})`, whose
-crawl pages history backwards until the id appears (`App.tsx:5632-5666`), with
-the scroll and highlight side at `MessageList.tsx:1017-1033`.
-`onOpenSearchResult` (`App.tsx:5675`) is the existing caller with the closest
-shape.
+A row shows the channel name, how long ago the message was sent
+(`fmtRelative`), the due time, and the preview. A pending reminder shows the
+time until it is due (`fmtUntil` in `chat/reltime.ts`). A fired reminder shows
+"due" and how long ago. If the reminder has no preview, the row shows
+"(no preview)". The design had a sender name and a skeleton here. The record has
+no sender, so the row has neither. The panel reads the clock every 30 seconds,
+so the relative times stay correct while it is open.
+
+Row actions are **jump**, **snooze**, and **done**. The row is the jump button.
+Snooze opens the presets of the table above, each one that is offered at that
+time, and the native date-time input with a "set" button, under the row.
+`snoozeReminder` sets the new due time and clears `firedAt`, so a fired
+reminder is pending again. Escape closes the snooze choices first, and the panel
+on the second press. Done uses `markDone`. Both functions raise `updatedAt` with
+`bump`, so the change wins the merge on the other devices.
+
+If the channel of a reminder is not in `state.channels` (the user left it, or it
+is gone), the row shows "channel not available", and the jump button is
+disabled. Snooze and done still work.
+
+**The jump** reuses the 49-1 chain: `close_panel`, then `set_active_channel`
+if the channel is not the active one, then
+`setFlashMessage({channelID, messageID, seq})`. The crawl pages history
+backwards until the id appears, 20 pages at most (`App.tsx:5632-5666`), with the
+scroll and highlight side at `MessageList.tsx:1017-1033`. `onJumpReminder` in
+`App.tsx` does this, and `onOpenSearchResult` is the caller with the closest
+shape. If the reminder had fired, the jump also marks it done. A pending
+reminder stays.
 
 **The badge.** Fired-and-undismissed reminders count into the tab/app badge
 (`notify/badge.ts`) — it is a "needs you" count by the definition that file
@@ -501,6 +529,17 @@ end.
     is not set with a wrong time.
   - `toLocalInput` and `fromLocalInput` convert between epoch milliseconds and
     the `datetime-local` value, in the local timezone of the browser.
+  - A message with a pending reminder shows "change reminder..." in the menu.
+    The modal then shows the current due time and a "remove" button. A new time
+    replaces the old reminder. "remove" calls `retireForMessage` with
+    `dropPreview` false, so the reminder is marked done and the preview stays,
+    because the message still exists.
+  - `ReminderModal` returns null when closed. Otherwise it renders
+    `ReminderModalBody`, which mounts new at each open, so its state starts new.
+    The first version cleared its state in an effect after the open. The demo
+    found that this effect ran late and deleted input typed before it ran.
+  - The clock mark is `ReminderIcon`, in the bright text color of the theme.
+    An emoji keeps its own colors and does not match a theme.
   - The clock mark and the teardown are as in *Rendering* and *Teardown*.
     `pendingReminders` in `App.tsx` is a `useMemo` over the reminder set and the
     active channel.
@@ -508,11 +547,42 @@ end.
     `retireForMessage`, `NewReminder`, `addReminder`, `toLocalInput`, and
     `fromLocalInput`. The tests extend `message-menu.test.ts` and
     `reminders.test.ts`.
-  - No browser check of 87-3 was done yet.
-- **87-4 — the entry and the panel.** The sidebar row, the place of the entry on
-  the phone, the zuckermode row, the `openPanel` union in both halves,
-  `RemindersPanel.tsx` with jump / snooze / done. First slice a user can use end
-  to end, so the **`CHANGELOG.md` bullet lands here**.
+  - The browser check is partly done. See *Verification, when built*.
+- **87-4 — the entry and the panel. BUILT.** The first slice that a user can use
+  end to end, so the `CHANGELOG.md` entry lands here. The files are
+  `web/src/components/RemindersPanel.tsx`, `web/src/chat/reltime.test.ts`, and
+  changes in `web/src/chat/reminders.ts`, `web/src/chat/reltime.ts`,
+  `web/src/components/App.tsx`, `web/src/components/Sidebar.tsx`,
+  `web/src/components/ZuckerList.tsx`, `web/src/state/types.ts`,
+  `web/src/state/reducer.ts`, `web/src/theme.css`, and the tests. No server
+  code. The decisions:
+  - The panel lists each reminder that is not done, in the order of `panelRows`.
+    A row shows the channel name, how long ago the message was sent, the due
+    time, and the preview. A pending reminder shows `fmtUntil`. A fired reminder
+    shows "due" and how long ago.
+  - `fmtUntil` gives "now", "in under 1m", "in Nm", "in Nh", then a lowercase
+    weekday with a 24-hour time inside six days, then the month, the day, and
+    the time. `fmtRelative` formats only past times, which is why the function
+    exists.
+  - The jump closes the panel, switches the channel, and sets `flashMessage`. If
+    the reminder had fired, the jump also marks it done. A pending reminder
+    stays.
+  - A reminder whose channel is not in `state.channels` shows "channel not
+    available". Its jump button is disabled, and `onJumpReminder` returns.
+    Snooze and done still work.
+  - Snooze sets the new due time and clears `firedAt`. Done sets `doneAt`. Both
+    use `bump` for `updatedAt`.
+  - The desktop entry is a "reminders" row in the sidebar, between the friends
+    list and the parking lot. It shows the count of reminders that are not done,
+    and the unread dot when one or more have fired. It always shows.
+  - The phone entry is a sixth button in the head of the conversation list,
+    between threads and filter. It shows a dot when a reminder has fired. It
+    shows only when one or more reminders are not done.
+  - The panel reuses the chrome classes of the thread inbox and has its own
+    `chalk-reminders-*` classes for the rows.
+  - Nothing sets `firedAt` until slice 87-5, so the dot and the style of a fired
+    row do not show yet.
+  - The browser check is partly done. See *Verification, when built*.
 - **87-5 — firing.** The client sweep, the `visibilitychange` re-evaluation, the
   overdue-on-load path, the sidebar badge and the `notify/badge.ts` count.
 - **87-6 — the sound and the banner.** A new `"reminder"` `NotifyEventType` —
@@ -548,7 +618,7 @@ and 87-8 add the closed app.
 | Row menu item + exhaustive label | `chat/message-menu.ts:43`, `MessageMenu.tsx:33,94` |
 | Gutter marker and its mobile fallback | the `⋮` marker in `MessageList.tsx`, `--chalk-msg-gutter` in `theme.css` |
 | Badged sidebar entry | the threads entry in `Sidebar.tsx`, `.chalk-sidebar-section--threads` in `theme.css`, `UnreadDot.tsx` |
-| The same entry in zuckermode | the parking and threads buttons in `ZuckerList.tsx` |
+| The same entry on the phone | the parking and threads buttons in `ZuckerList.tsx` |
 | A lazy modal panel with swipe-back | `ThreadInboxPanel.tsx`, `chat/use-swipe-back.ts` |
 | Jump to a message not yet loaded | `App.tsx:5632-5666`, caller shape `App.tsx:5675` |
 | Relative time | `chat/reltime.ts` |
@@ -616,20 +686,44 @@ Then a live run through the `run-chalk` skill, two users:
    the blob, and the other device's set is **not** erased.
 7. Delete a reminded message; the reminder and its cached preview go with it.
 8. Phone viewport: the mark renders inline, long-press still opens the message
-   menu, the panel swipes back, and the entry is present in zuckermode.
+   menu, the panel swipes back, and the head button of the conversation list is
+   present while a reminder is not done.
 9. Park with the privacy screen on: the reminder fires silently and the tab count
    stays hidden.
 10. Set reminders up to `REMINDER_MAX` and confirm the next one is refused with a
     message, not swallowed.
 
-Slice 87-3 leaves this checklist open. No browser check of 87-3 was done yet:
+The browser check of 87-3 is done on a desktop viewport. A headed run on 15
+November 2026 through the `run-chalk` probe passed these steps:
 
-- Set a reminder from the menu on a desktop viewport and on a phone viewport.
-- Check the clock mark, and its `title` with the due time.
-- Check that the mark is hidden while the row is hovered, and inline on a phone.
+- The menu item on the message of another user.
+- The five presets, each with its due time.
+- The mark in the gutter, clear of the timestamp.
+- The mark hidden on row hover.
+- A custom time on an own message.
+- "change reminder..." with "remove".
+- Both reminders present after a reload.
+
+Three checks stay open:
+
+- On a phone viewport, check the inline mark and the long-press menu.
 - Set `REMINDER_MAX` reminders, and check the cap message in the modal.
-- Set a second reminder on the same message, and check that the first is gone.
 - Delete a reminded message, and check that the mark goes.
+
+The browser check of 87-4 is done on a desktop viewport. A run on 15 November
+2026 through the `run-chalk` probe passed these steps:
+
+- The sidebar entry shows the count.
+- The panel lists both reminders.
+- Snooze shows the presets and moves the due time.
+- Jump closes the panel and flashes the message.
+- Done removes the row and the mark, and lowers the count.
+
+Three checks stay open:
+
+- On a phone viewport, check the head button and the panel with swipe back.
+- Jump to a message that is not loaded, and check the crawl.
+- Check a reminder whose channel is gone.
 
 After slices 87-7 and 87-8, add these steps for the closed app:
 

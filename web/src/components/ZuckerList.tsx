@@ -44,6 +44,7 @@ import {
   FilterIcon,
   NewChannelIcon,
   ParkingIcon,
+  ReminderIcon,
   ThreadsIcon,
 } from "./icons";
 import { presenceClass, presenceLabel } from "../chat/presence";
@@ -65,6 +66,13 @@ interface Props {
   // null hides the row (prefs.parkingLot.hidden), mirroring the sidebar.
   parkingName: string | null;
   threadsUnread: number;
+  // 87-4: remindersActive is the count of reminders that are not done. The head
+  // button shows only when it is above 0, so the head stays short. remindersFired
+  // is the count of fired reminders. Above 0, the button gets a dot.
+  // onOpenReminders opens the Reminders panel.
+  remindersActive: number;
+  remindersFired: number;
+  onOpenReminders: () => void;
   onSelect: (channelID: string) => void;
   onFriendSelect: (userID: string) => void;
   onPark: () => void;
@@ -100,6 +108,9 @@ export function ZuckerList({
   voiceOccupants = {},
   parkingName,
   threadsUnread,
+  remindersActive,
+  remindersFired,
+  onOpenReminders,
   onSelect,
   onFriendSelect,
   onPark,
@@ -309,11 +320,12 @@ export function ZuckerList({
   return (
     <div class="chalk-zucker" data-testid="zucker-list">
       {scene}
-      {/* 137-10: five icon buttons follow the title: parking lot, threads,
-          filter, add a friend, and new channel. Each icon is decoration and
-          the button carries the label. The parking lot button has the name
-          of the parking lot, because a user can rename it. It does not show
-          when parkingName is null. */}
+      {/* 137-10: six icon buttons follow the title: parking lot, threads,
+          reminders, filter, add a friend, and new channel. Each icon is
+          decoration and the button carries the label. The parking lot button
+          has the name of the parking lot, because a user can rename it. It
+          does not show when parkingName is null. The reminders button (87-4)
+          shows only when a reminder is active. */}
       <div class="chalk-zucker-head">
         <span class="chalk-zucker-title">conversations</span>
         {parkingName !== null && (
@@ -340,6 +352,21 @@ export function ZuckerList({
           {/* A dot on the button shows unread replies. */}
           {threadsUnread > 0 && <span class="chalk-zucker-add-dot" aria-hidden="true" />}
         </button>
+        {/* 87-4: the dot shows that a reminder has fired, as the dot of the
+            threads button shows unread replies. */}
+        {remindersActive > 0 && (
+          <button
+            type="button"
+            class="chalk-zucker-add"
+            onClick={onOpenReminders}
+            title={remindersFired > 0 ? "reminders, some are due" : "reminders"}
+            aria-label={remindersFired > 0 ? "reminders, some are due" : "reminders"}
+            data-testid="zucker-reminders"
+          >
+            <ReminderIcon size={18} />
+            {remindersFired > 0 && <span class="chalk-zucker-add-dot" aria-hidden="true" />}
+          </button>
+        )}
         <button
           type="button"
           class={`chalk-zucker-add ${filterOpen ? "chalk-zucker-add--active" : ""}`}

@@ -277,6 +277,10 @@ const NotificationsPanel = lazyComponent(() =>
 );
 // 42-8: the thread inbox. Lazy for the same reason the other panels are -- most
 // sessions never open it, and the dot that advertises it costs nothing.
+// 87-4: the reminders panel is lazy for the same reason.
+const RemindersPanel = lazyComponent(() =>
+  import("./RemindersPanel").then((m) => m.RemindersPanel),
+);
 const ThreadInboxPanel = lazyComponent(() =>
   import("./ThreadInboxPanel").then((m) => m.ThreadInboxPanel)
 );
@@ -355,9 +359,14 @@ import { PinSync, type PinSyncStatus } from "../crypto/pin-sync"; // 84-2
 import { RemindersSync } from "../chat/reminders-sync"; // 87-2
 import {
   REMINDER_MAX,
+  activeCount,
   addReminder,
+  firedCount,
+  markDone,
+  panelRows,
   pendingFor,
   retireForMessage,
+  snoozeReminder,
   type Reminder,
 } from "../chat/reminders"; // 87-3
 import {
@@ -1962,6 +1971,48 @@ export function App() {
     },
     [remindTarget, remindersUID, closeRemind],
   );
+  // 87-4: the counts and the rows of the Reminders panel. remindersActive is the
+  // count of reminders that are not done. It feeds the count of the sidebar row
+  // and the show condition of the phone head button. remindersFired feeds the
+  // dots. Nothing sets `firedAt` until the firing slice, so the dots stay off.
+  const remindersActive = useMemo(() => activeCount(reminders), [reminders]);
+  const remindersFired = useMemo(() => firedCount(reminders), [reminders]);
+  const reminderRows = useMemo(() => panelRows(reminders), [reminders]);
+  const openReminders = useCallback(() => dispatch({ kind: "open_panel", panel: "reminders" }), []);
+  // The panel actions below read the set from the store, as onSetReminder does.
+  // They save nothing if the reminder is done or unknown, because markDone and
+  // snoozeReminder then return null.
+  const onDoneReminder = useCallback(
+    (r: Reminder) => {
+      if (!remindersUID) return;
+      const next = markDone(loadReminders(remindersUID), r.id, Date.now());
+      if (next) saveReminders(remindersUID, next);
+    },
+    [remindersUID],
+  );
+  const onSnoozeReminder = useCallback(
+    (r: Reminder, dueAt: number) => {
+      if (!remindersUID) return;
+      const next = snoozeReminder(loadReminders(remindersUID), r.id, dueAt, Date.now());
+      if (next) saveReminders(remindersUID, next);
+    },
+    [remindersUID],
+  );
+  // The pending reminder of the target message. The modal shows its due time
+  // and the "remove" button. Null means the message has none.
+  // The pending reminder of the target message. The modal shows its due time
+  // and the "remove" button. Null means the message has none.
+  const remindCurrent = remindTarget ? (pendingReminders.get(remindTarget.id) ?? null) : null;
+  // "remove" marks the reminder done. It does not delete the preview, because
+  // the message still exists. Like onSetReminder, it reads the set from the
+  // store.
+  const onRemoveReminder = useCallback(() => {
+    const m = remindTarget;
+    if (!remindersUID || !m) return;
+    const next = retireForMessage(loadReminders(remindersUID), m.channelID, m.id, Date.now(), false);
+    if (next) saveReminders(remindersUID, next);
+    closeRemind();
+  }, [remindTarget, remindersUID, closeRemind]);
 
   // Teardown. A deleted message must not keep a reminder or its preview. This
   // effect looks at the loaded messages of each reminder, and does not hook the
@@ -5479,10 +5530,16 @@ export function App() {
   // 42-8: lookup maps for the inbox panel, built once here rather than scanned
   // per row -- the same discipline MessageList's handleByUser follows. The inbox
   // spans channels, so it cannot reuse the active channel's roster. 61-2: the
-  // search panel spans channels the same way and shares the maps.
+  // search panel spans channels the same way and shares the maps. 87-4: the
+  // reminders panel shares them too. A reminder for a channel that is not in
+  // the maps shows "channel not available".
   const panelChannelNames: Record<string, string> = {};
   const panelHandles: Record<string, string> = {};
-  if (state.openPanel === "threads" || state.openPanel === "search") {
+  if (
+    state.openPanel === "threads" ||
+    state.openPanel === "search" ||
+    state.openPanel === "reminders"
+  ) {
     for (const id of state.channelOrder) {
       const ch = state.channels[id];
       if (ch) panelChannelNames[id] = displayName(ch, state.user?.id ?? null);
@@ -5822,6 +5879,23 @@ export function App() {
       limit: HISTORY_PAGE_SIZE,
     });
   }, [flashMessage, flashList]);
+
+  // 87-4: the jump of a reminder row. If the channel is not in state.channels
+  // (the user left it, or it is gone), the function returns, and the row keeps
+  // its disabled jump button. Otherwise it closes the panel, switches to the
+  // channel if it is not the active one, and sets flashMessage. That is the path
+  // of the search panel, so the crawl above loads older history pages until the
+  // message is present, 20 pages at most. A fired reminder is also marked
+  // done. A pending reminder stays.
+  const onJumpReminder = (r: Reminder) => {
+    if (!state.channels[r.channelID]) return;
+    dispatch({ kind: "close_panel" });
+    if (r.firedAt !== null) onDoneReminder(r);
+    if (r.channelID !== state.activeChannelID) {
+      dispatch({ kind: "set_active_channel", channelID: r.channelID });
+    }
+    setFlashMessage({ channelID: r.channelID, messageID: r.messageID, seq: r.seq });
+  };
 
   // 61-2: a clicked search result. close_panel is explicit because
   // set_active_channel deliberately leaves openPanel alone. Replies never
@@ -6563,6 +6637,10 @@ export function App() {
             // 49-6: the thread inbox lives with the other unread dots now.
             onOpenThreads={() => dispatch({ kind: "open_panel", panel: "threads" })}
             threadsUnread={threadsNeedingYou}
+            // 87-4: the Reminders row, between the friends list and the parking lot.
+            onOpenReminders={openReminders}
+            remindersActive={remindersActive}
+            remindersFired={remindersFired}
           />
           {/* 33-4: resize handle. The aside renders on desktop only (135-2),
               so the handle needs no check of its own. */}
@@ -6623,6 +6701,9 @@ export function App() {
               voiceOccupants={zuckerVoiceOccupants}
               parkingName={parking.hidden ? null : parking.name}
               threadsUnread={threadsNeedingYou}
+              onOpenReminders={openReminders} // 87-4
+              remindersActive={remindersActive}
+              remindersFired={remindersFired}
               hotChannels={hotChannels} // 115-2
               burstMinutes={flairBurstMinutes}
               waves={waves} // 115-3
@@ -7280,9 +7361,24 @@ export function App() {
       <ReminderModal
         open={remindTarget !== null}
         error={remindError}
+        currentDueAt={remindCurrent?.dueAt ?? null}
         onPick={onSetReminder}
+        onRemove={onRemoveReminder}
         onCancel={closeRemind}
       />
+
+      {/* 87-4: the reminders panel. It mounts only while open, so its clock and
+          its snooze state start new at each open. */}
+      {state.openPanel === "reminders" && (
+        <RemindersPanel
+          rows={reminderRows}
+          channelNames={panelChannelNames}
+          onJump={onJumpReminder}
+          onSnooze={onSnoozeReminder}
+          onDone={onDoneReminder}
+          onClose={() => dispatch({ kind: "close_panel" })}
+        />
+      )}
 
       {/* att-4b: Giphy consent. Reuses ConfirmModal -- confirm enables Giphy
           (the viewer accepts that rendering a GIF fetches it from Giphy's CDN,

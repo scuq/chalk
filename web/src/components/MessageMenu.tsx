@@ -35,7 +35,7 @@ const LABELS: Record<MessageMenuItem["kind"], string> = {
   reply: "reply in thread",
   quote: "quote",
   copy: "copy text",
-  remind: "remind me...", // 87-3: opens a modal, so the label ends in "..."
+  remind: "remind me...", // 87-3: unused, the menu shows item.label. The Record needs every kind
   edit: "edit",
   delete: "delete",
 };
@@ -105,7 +105,7 @@ export function MessageMenu({ items, when, x, y, onPick, onQuickReact, onClose }
       onClick={() => onPick(item)}
       data-testid={`message-menu-${item.kind}`}
     >
-      {item.kind === "delete" ? item.label : LABELS[item.kind]}
+      {item.kind === "delete" || item.kind === "remind" ? item.label : LABELS[item.kind]}
     </button>
   );
 

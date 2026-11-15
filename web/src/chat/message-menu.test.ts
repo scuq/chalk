@@ -99,6 +99,16 @@ test("remind is offered on any message when the caller wires it", () => {
   assert.deepEqual(kinds({ deleted: true, canRemind: true }), []);
 });
 
+test("the remind label passes through, defaulting to 'remind me...'", () => {
+  const find = (o: Partial<MessageMenuOpts>) =>
+    buildMessageMenu(opts(o)).find((i) => i.kind === "remind");
+  assert.deepEqual(find({}), { kind: "remind", label: "remind me..." });
+  assert.deepEqual(find({ remindLabel: "change reminder..." }), {
+    kind: "remind",
+    label: "change reminder...",
+  });
+});
+
 test("quick reactions ride along with the react item", () => {
   assert.equal(showsQuickReactions(buildMessageMenu(opts())), true);
   assert.equal(showsQuickReactions(buildMessageMenu(opts({ canReact: false }))), false);

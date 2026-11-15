@@ -21,6 +21,7 @@ import type {
 } from "../state/types";
 import { buildMessageMenu, type MessageMenuItem } from "../chat/message-menu";
 import type { Reminder } from "../chat/reminders";
+import { ReminderIcon } from "./icons";
 import { verifyLabel, verifyTitle } from "../chat/verify"; // 83-2
 import { LONG_PRESS_MS, pressWandered } from "../chat/press";
 import { MessageMenu } from "./MessageMenu";
@@ -696,11 +697,14 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
         canQuote: Boolean(onQuoteMessage) && messageText(m.body).trim().length > 0,
         hasText: m.body.trim().length > 0,
         canRemind: Boolean(onRemindMessage),
+        // 87-3: a message with a pending reminder gets a different label.
+        // The default of buildMessageMenu applies when this is undefined.
+        remindLabel: pendingReminders?.has(m.id) ? "change reminder..." : undefined,
         canEdit: Boolean(canEditMessage?.(m) && onEditMessage),
         canDelete: Boolean(canDeleteMessage?.(m) && onDeleteMessage),
         deleteLabel: deleteLabelFor?.(m),
       }),
-    [onPickReaction, onOpenThread, onQuoteMessage, onRemindMessage, canEditMessage, onEditMessage, canDeleteMessage, onDeleteMessage, deleteLabelFor],
+    [onPickReaction, onOpenThread, onQuoteMessage, onRemindMessage, pendingReminders, canEditMessage, onEditMessage, canDeleteMessage, onDeleteMessage, deleteLabelFor],
   );
 
   // Phase 9.6i: one userID → handle lookup instead of re-scanning members per
@@ -1519,11 +1523,11 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
               );
             })()}
             <span class="chalk-message-body" data-testid="message-body">
-              {/* 87-3: the clock mark. One element, the first child of the body
-                  span. On a pointer that can hover, theme.css moves it to the
-                  left gutter, where the marker is. With (hover: none) it stays
-                  inline before the text. Only a pending reminder shows it, and
-                  a deleted row shows none. */}
+              {/* 87-3: the clock mark, a ReminderIcon. One element, the first
+                  child of the body span. On a pointer that can hover, theme.css
+                  moves it to the left gutter, where the marker is. With
+                  (hover: none) it stays inline before the text. Only a pending
+                  reminder shows it, and a deleted row shows none. */}
               {(() => {
                 const reminder = m.deleted ? undefined : pendingReminders?.get(m.id);
                 if (!reminder) return null;
@@ -1533,7 +1537,7 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
                     title={`reminder: ${new Date(reminder.dueAt).toLocaleString()}`}
                     data-testid={`message-reminder-${m.id}`}
                   >
-                    <span aria-hidden="true">⏰</span>
+                    <ReminderIcon />
                   </span>
                 );
               })()}

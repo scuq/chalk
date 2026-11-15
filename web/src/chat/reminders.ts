@@ -573,3 +573,45 @@ export function fromLocalInput(value: string): number | null {
   ).getTime();
   return Number.isFinite(ms) ? ms : null;
 }
+
+// panelRows returns the reminders that the Reminders panel lists. It drops each
+// done reminder. The order is the keep order of fitReminders, so the first rows
+// are the fired reminders, the latest fired first. The pending reminders follow,
+// the earliest due time first. The result is a new array.
+export function panelRows(list: readonly Reminder[]): Reminder[] {
+  return list.filter((r) => r.doneAt === null).sort(byKeepOrder);
+}
+
+// markDone returns a copy of list in which the reminder with the given id has
+// `doneAt` set to nowMs. It raises `updatedAt` with bump, so the change wins the
+// merge on the other devices. It returns null if no reminder has that id or if
+// that reminder is already done. The caller then has nothing to save.
+export function markDone(list: readonly Reminder[], id: string, nowMs: number): Reminder[] | null {
+  let changed = false;
+  const out = list.map((r) => {
+    if (r.id !== id || r.doneAt !== null) return r;
+    changed = true;
+    return { ...r, doneAt: nowMs, updatedAt: bump(r, nowMs) };
+  });
+  return changed ? out : null;
+}
+
+// snoozeReminder returns a copy of list in which the reminder with the given id
+// has the new due time and `firedAt` null. A fired reminder is then pending
+// again. It raises `updatedAt` with bump, so the change wins the merge on the
+// other devices. It returns null if no reminder has that id or if that reminder
+// is done. The caller must check the new due time: this function does not.
+export function snoozeReminder(
+  list: readonly Reminder[],
+  id: string,
+  dueAt: number,
+  nowMs: number,
+): Reminder[] | null {
+  let changed = false;
+  const out = list.map((r) => {
+    if (r.id !== id || r.doneAt !== null) return r;
+    changed = true;
+    return { ...r, dueAt, firedAt: null, updatedAt: bump(r, nowMs) };
+  });
+  return changed ? out : null;
+}

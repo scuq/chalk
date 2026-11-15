@@ -1,16 +1,22 @@
 // ReminderModal: the dialog that sets a reminder on one message.
 // Phase 87-3.
 //
-// Opens from the row menu item "remind me...". Shows the presets that are
-// offered at this time, each with its due time, and a field for a custom time.
-// The modal only chooses a time. App.tsx owns the message and the store.
+// Opens from the row menu item "remind me..." or "change reminder...". Shows
+// the presets that are offered at this time, each with its due time, and a
+// field for a custom time. If the message has a pending reminder, it also
+// shows the due time of that reminder and a "remove" button. The modal only
+// chooses a time. App.tsx owns the message and the store.
 //
 // Props:
-//   open     -- whether the modal is visible. When false, nothing renders.
-//   error    -- text from the caller, for example the cap message. It keeps
-//               the modal open so the user can cancel or try again.
-//   onPick   -- called with the due time in epoch milliseconds.
-//   onCancel -- called on cancel, escape, and click-outside.
+//   open         -- whether the modal is visible. When false, nothing renders.
+//   error        -- text from the caller, for example the cap message. It keeps
+//                   the modal open so the user can cancel or try again.
+//   currentDueAt -- the due time of the pending reminder of the message, in
+//                   epoch milliseconds, or null if there is none. A number
+//                   changes the title to "change this reminder".
+//   onPick       -- called with the due time in epoch milliseconds.
+//   onRemove     -- called when the user selects "remove".
+//   onCancel     -- called on cancel, escape, and click-outside.
 import { useEffect, useState } from "preact/hooks";
 import {
   PRESET_LABELS,
@@ -24,7 +30,9 @@ import {
 interface Props {
   open: boolean;
   error: string | null;
+  currentDueAt: number | null;
   onPick: (dueAt: number) => void;
+  onRemove: () => void;
   onCancel: () => void;
 }
 
@@ -37,27 +45,30 @@ function fmtDue(ms: number): string {
   });
 }
 
-export function ReminderModal({ open, error, onPick, onCancel }: Props) {
+export function ReminderModal({ open, ...rest }: Props) {
+  // The body mounts new each time the modal opens, so its state starts new:
+  // the clock is read again and the old input is gone. An earlier version
+  // cleared the state in an effect after the open. That effect ran late and
+  // deleted input that the user typed before it ran.
+  if (!open) return null;
+  return <ReminderModalBody {...rest} />;
+}
+
+function ReminderModalBody({ error, currentDueAt, onPick, onRemove, onCancel }: Omit<Props, "open">) {
   // The clock at the time the modal opened. It decides which presets are
   // offered, and it sets the `min` of the custom field.
   const [now, setNow] = useState(() => Date.now());
   const [custom, setCustom] = useState("");
   const [customError, setCustomError] = useState<string | null>(null);
 
-  // Each time the modal opens, read the clock again and clear the old input.
+  // Close on Escape.
   useEffect(() => {
-    if (!open) return undefined;
-    setNow(Date.now());
-    setCustom("");
-    setCustomError(null);
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onCancel();
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open, onCancel]);
-
-  if (!open) return null;
+  }, [onCancel]);
 
   // A preset is offered only if dueAtFor gives a time for it at this clock.
   // For example, "this evening" is not offered from 18:00. The custom preset
@@ -112,9 +123,24 @@ export function ReminderModal({ open, error, onPick, onCancel }: Props) {
         data-testid="reminder-modal"
       >
         <header class="chalk-modal-header">
-          <h2 id="reminder-modal-title">remind me about this message</h2>
+          <h2 id="reminder-modal-title">
+            {currentDueAt !== null ? "change this reminder" : "remind me about this message"}
+          </h2>
         </header>
         <div class="chalk-modal-body">
+          {currentDueAt !== null && (
+            <div class="chalk-reminder-current" data-testid="reminder-current">
+              <span>set for {new Date(currentDueAt).toLocaleString()}</span>
+              <button
+                type="button"
+                class="chalk-button chalk-button--danger"
+                onClick={onRemove}
+                data-testid="reminder-remove"
+              >
+                remove
+              </button>
+            </div>
+          )}
           <div class="chalk-reminder-presets">
             {presets.map(({ preset, dueAt }) => (
               <button

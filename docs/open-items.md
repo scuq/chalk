@@ -489,7 +489,7 @@ subscribe.
   was made with, and the dispatcher lists only rows that match the current
   key. 65-5 must pass the current key to `ListPushSubscriptionsForUsers`.
 
-## Phase 87 — message reminders: IN PROGRESS, 87-1 to 87-3 built
+## Phase 87 — message reminders: IN PROGRESS, 87-1 to 87-4 built
 
 Message reminders bring one message back later. 87-1 is built: the pure rules
 in `web/src/chat/reminders.ts`, with tests. 87-2 is built: the sealed prefs
@@ -500,8 +500,21 @@ tomorrow morning, tomorrow evening, weekend, next Monday, and a custom time.
 The whole set of reminders lives in a sealed prefs blob, and the ceiling is 25
 reminders. For a user with web push, the server also holds a wake record for
 each pending reminder, so that a reminder fires when chalk is closed. The
-record holds a due time and a random ID, and no message. Slices 87-4 to 87-9
-are open. The browser check of 87-3 is open. Record in
+record holds a due time and a random ID, and no message. 87-4 added the
+Reminders row in the sidebar, the button in the head of the conversation list on
+a phone, and the panel with jump, snooze, and done. Slices 87-5 to 87-9 are
+open. Nothing sets `firedAt` until 87-5, so the dot and the style of a fired row
+do not show yet. The browser check of 87-3 and the check of 87-4 are done on a
+desktop viewport. These checks stay open:
+
+- 87-3: the phone viewport (the inline mark and the long-press menu).
+- 87-3: the cap message at 25.
+- 87-3: a reminded message that is gone.
+- 87-4: the head button and the panel on a phone viewport, with swipe back.
+- 87-4: a jump to a message that is not loaded (the crawl).
+- 87-4: a reminder whose channel is gone.
+
+Record in
 [phases/PHASE-87-REMINDERS.md](phases/PHASE-87-REMINDERS.md).
 
 - **Observation:** the rules sync, the peer-audio sync, and the pin sync keep

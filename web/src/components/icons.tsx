@@ -187,6 +187,22 @@ export function SearchIcon() {
   );
 }
 
+// 87-3: ReminderIcon is an alarm clock, 12px by default. It is the clock mark
+// of a message row that has a pending reminder. It takes the text color
+// (currentColor), so the mark follows each theme. An emoji keeps its own
+// colors and does not. It is decoration. The row carries the due time in its
+// title.
+export function ReminderIcon({ size = 12 }: { size?: number }) {
+  return (
+    <Icon size={size}>
+      <circle cx="12" cy="13" r="8" />
+      <path d="M12 9v4l2.5 2" />
+      <path d="M5 4L2.5 6.5" />
+      <path d="M19 4l2.5 2.5" />
+    </Icon>
+  );
+}
+
 // 137-10: ThreadsIcon is the threads button of the phone list head, 18px. It
 // is a reply arrow that goes down and then right, the shape of the "↳" that
 // the old threads row used. It is decoration. The button carries the label.

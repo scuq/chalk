@@ -18,7 +18,7 @@ export type MessageMenuItem =
   | { kind: "reply" }
   | { kind: "quote" }
   | { kind: "copy" }
-  | { kind: "remind" } // 87-3: opens the reminder modal
+  | { kind: "remind"; label: string } // 87-3: opens the reminder modal, label from the opts
   | { kind: "edit" }
   | { kind: "delete"; label: string };
 
@@ -34,6 +34,10 @@ export interface MessageMenuOpts {
   /** 87-3: is a reminder offered? The caller wires it for any message, own or
    *  not, so this is a capability check and not an ownership test. */
   canRemind: boolean;
+  /** 87-3: the label of the remind item. The default is "remind me...". The
+   *  caller passes "change reminder..." for a message that has a pending
+   *  reminder. */
+  remindLabel?: string;
   canEdit: boolean;
   canDelete: boolean;
   /** Democratic channels call it "propose deletion" -- see deletepolicy.ts. */
@@ -55,7 +59,7 @@ export function buildMessageMenu(opts: MessageMenuOpts): MessageMenuItem[] {
   if (opts.hasText) items.push({ kind: "copy" });
   // 87-3: after copy, so the items that every viewer can get stay together.
   // Before edit and delete, which depend on who sent the message.
-  if (opts.canRemind) items.push({ kind: "remind" });
+  if (opts.canRemind) items.push({ kind: "remind", label: opts.remindLabel ?? "remind me..." });
   if (opts.canEdit) items.push({ kind: "edit" });
   if (opts.canDelete) items.push({ kind: "delete", label: opts.deleteLabel ?? "delete" });
   return items;

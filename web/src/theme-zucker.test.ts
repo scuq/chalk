@@ -194,15 +194,15 @@ test("a filter opens the voice and hidden shelves on a hit, and no matches count
   assert.match(list, /\{filtering && visibleRows\.length === 0 && shownVoice\.length === 0 && shownHidden\.length === 0 && \(/);
 });
 
-test("the head holds five icon buttons: parking, threads, filter, add friend, new channel", () => {
+test("the head holds six icon buttons: parking, threads, reminders, filter, add friend, new channel", () => {
   const list = readFileSync(join(resolve(process.cwd(), "src"), "components", "ZuckerList.tsx"), "utf8");
   const head = list.slice(list.indexOf('class="chalk-zucker-head"'), list.indexOf('class="chalk-zucker-filter"'));
-  const order = ["zucker-parking", "zucker-threads", "zucker-filter-toggle", "zucker-add-friend", "zucker-new-channel"].map((id) =>
+  const order = ["zucker-parking", "zucker-threads", "zucker-reminders", "zucker-filter-toggle", "zucker-add-friend", "zucker-new-channel"].map((id) =>
     head.indexOf(`data-testid="${id}"`),
   );
   assert.ok(order.every((at) => at > 0), "a head button is missing");
   assert.deepEqual([...order].sort((a, b) => a - b), order);
-  for (const icon of ["<ParkingIcon size={18} />", "<ThreadsIcon />", "<FilterIcon />", "<AddFriendIcon />", "<NewChannelIcon />"]) {
+  for (const icon of ["<ParkingIcon size={18} />", "<ThreadsIcon />", "<ReminderIcon size={18} />", "<FilterIcon />", "<AddFriendIcon />", "<NewChannelIcon />"]) {
     assert.ok(head.includes(icon), `${icon} is not in the head`);
   }
   // No text glyph stands in for an icon, and parking and threads are no longer rows.

@@ -6207,7 +6207,9 @@ body.chalk-resizing-y .chalk-composer-resizer {
 /* 87-3: the clock mark of a row that has a pending reminder. One element, the
    first child of the body span. With a pointer that can hover, it sits in the
    left gutter at the place of the marker above. The (hover: none) block at the
-   end of this file puts it inline before the text. */
+   end of this file puts it inline before the text. The icon is a block SVG
+   that takes currentColor, so display: flex centers it and the color follows
+   each theme. */
 .chalk-message-reminder {
   position: absolute;
   left: var(--chalk-s1);
@@ -6217,8 +6219,9 @@ body.chalk-resizing-y .chalk-composer-resizer {
   padding: 1px 0;
   font-size: var(--chalk-size-small);
   line-height: 1;
-  text-align: center;
-  color: var(--chalk-fg-muted);
+  display: flex;
+  justify-content: center;
+  color: var(--chalk-fg-bright);
   cursor: default;
 }
 
@@ -6236,8 +6239,17 @@ body.chalk-resizing-y .chalk-composer-resizer {
   }
 }
 
-/* 87-3: the reminder modal. A column of preset buttons, then the custom field
-   and its button in one row. */
+/* 87-3: the reminder modal. The "set for" line and the "remove" button in one
+   row, then a column of preset buttons, then the custom field and its button
+   in one row. */
+.chalk-reminder-current {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--chalk-s3);
+  color: var(--chalk-fg-bright);
+}
+
 .chalk-reminder-presets {
   display: flex;
   flex-direction: column;
@@ -11485,10 +11497,12 @@ body.chalk-resizing-y .chalk-composer-resizer {
   }
 
   /* 87-3: the gutter is 0px here, so the clock mark moves inline before the
-     text. */
+     text. inline-flex keeps the icon on the line of the text, and
+     vertical-align lines it up with that text. */
   .chalk-message-reminder {
     position: static;
-    display: inline;
+    display: inline-flex;
+    vertical-align: -1px;
     width: auto;
     padding: 0;
     margin-right: 0.4em;
@@ -11569,6 +11583,129 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-sidebar-threads-glyph {
   color: var(--chalk-fg-dim);
   font-size: var(--chalk-size-small);
+}
+
+/* 87-4: the Reminders row of the sidebar. The rules copy the threads entry
+   above. The panel has no sidebar rule of its own: it reuses the chrome classes
+   of the thread inbox. */
+.chalk-sidebar-section--reminders {
+  flex-shrink: 0;
+  margin-top: var(--chalk-s4);
+}
+
+.chalk-sidebar-reminders {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  width: calc(100% - 2 * var(--chalk-s1));
+  margin: 0 var(--chalk-s1);
+  background: transparent;
+  border: none;
+  color: var(--chalk-fg);
+  font: inherit;
+  text-align: left;
+  padding: var(--chalk-s1) var(--chalk-s2);
+  cursor: pointer;
+  border-radius: var(--chalk-radius-md);
+  transition: background-color var(--chalk-dur-fast), color var(--chalk-dur-fast), box-shadow var(--chalk-dur-fast);
+}
+
+.chalk-sidebar-reminders:hover,
+.chalk-sidebar-reminders:focus-visible {
+  background: var(--chalk-bg-hover);
+}
+
+.chalk-sidebar-reminders-glyph {
+  color: var(--chalk-fg-dim);
+}
+
+/* 87-4: the rows of the Reminders panel. A row is a jump button that holds the
+   channel line and the preview, and the two action buttons beside it. The snooze
+   choices open under the row. */
+.chalk-reminders-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+}
+
+.chalk-reminders-item {
+  padding: var(--chalk-s3) var(--chalk-s4);
+  border-bottom: 1px solid var(--chalk-border);
+}
+
+/* A fired reminder has a bright bar on the left edge. */
+.chalk-reminders-item--fired {
+  box-shadow: inset 2px 0 0 var(--chalk-fg-bright);
+}
+
+.chalk-reminders-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--chalk-s3);
+}
+
+/* min-width: 0 lets the preview shrink and show its ellipsis in a flex row. */
+.chalk-reminders-jump {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s1);
+  background: transparent;
+  border: none;
+  color: var(--chalk-fg);
+  font: inherit;
+  text-align: left;
+  padding: 0;
+  cursor: pointer;
+}
+
+.chalk-reminders-jump:disabled {
+  cursor: default;
+  color: var(--chalk-fg-muted);
+}
+
+.chalk-reminders-jump:hover:not(:disabled) .chalk-reminders-preview,
+.chalk-reminders-jump:focus-visible .chalk-reminders-preview {
+  color: var(--chalk-fg-bright);
+}
+
+.chalk-reminders-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--chalk-s2);
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg-muted);
+}
+
+.chalk-reminders-chan {
+  color: var(--chalk-fg-dim);
+}
+
+.chalk-reminders-due {
+  color: var(--chalk-fg-bright);
+}
+
+/* One line. A long preview ends with an ellipsis. */
+.chalk-reminders-preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chalk-reminders-actions {
+  display: flex;
+  gap: var(--chalk-s2);
+  flex-shrink: 0;
+}
+
+.chalk-reminders-snooze {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--chalk-s2);
+  margin-top: var(--chalk-s2);
 }
 
 /* 46-2: "the server is on a newer build than this tab". Amber for the same

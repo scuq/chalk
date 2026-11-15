@@ -10,6 +10,12 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- You can set a reminder on any message, your own or from another user. Open the menu of the message and choose "remind me...". Pick this evening, tomorrow morning, tomorrow evening, this weekend, next Monday, or a date and time. A clock mark shows on the message while the reminder is pending.
+- The reminders list shows all your reminders with the message, the channel, and the due time. On a desktop, open it from the "reminders" row in the sidebar. On a phone, tap the reminders button at the top of the conversation list. For each reminder you can show the message, snooze it, or mark it done. Your reminders sync across your devices, and the server cannot read them.
+
 ## v0.12.1 — 15 November 2026 — Push notifications and a reworked phone layout
 
 ### Added

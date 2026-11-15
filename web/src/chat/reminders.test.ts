@@ -13,6 +13,9 @@ import {
   activeCount,
   addReminder,
   fromLocalInput,
+  markDone,
+  panelRows,
+  snoozeReminder,
   retireForMessage,
   toLocalInput,
   PREVIEW_MAX,
@@ -399,4 +402,50 @@ test("toLocalInput and fromLocalInput: a round trip in local time", () => {
   assert.equal(fromLocalInput(toLocalInput(at(11, 15, 42))), at(11, 15, 42));
   assert.equal(fromLocalInput(""), null);
   assert.equal(fromLocalInput("tomorrow"), null);
+});
+
+// 87-4: the panel list. The second row of the fired pair has the later firedAt,
+// so it comes first. A done reminder never shows.
+test("panelRows: not done only, fired first, then pending by due time", () => {
+  const firedOld = rem(1, { firedAt: at(18, 9) });
+  const firedNew = rem(2, { firedAt: at(19, 9) });
+  const far = rem(3, { dueAt: at(28, 9) });
+  const soon = rem(4, { dueAt: at(21, 9) });
+  const done = rem(5, { doneAt: at(12, 9) });
+  assert.deepEqual(
+    panelRows([far, done, firedOld, soon, firedNew]).map((r) => r.id),
+    [firedNew.id, firedOld.id, soon.id, far.id],
+  );
+});
+
+// 87-4: the last two asserts show that a done reminder gives null, for the
+// same ID and for an unknown ID. The caller then saves nothing.
+test("markDone: sets doneAt, wins the merge, and is null for an unknown or done ID", () => {
+  const now = at(20, 12);
+  const r = rem(1, { firedAt: now - 5 });
+  const out = markDone([r, rem(2)], r.id, now);
+  assert.ok(out);
+  assert.equal(out[0].doneAt, now);
+  assert.equal(out[0].firedAt, now - 5);
+  assert.equal(out[1].doneAt, null);
+  assert.deepEqual(mergeReminders([r], [out[0]]), [out[0]]);
+  assert.equal(markDone(out, r.id, now + 1), null);
+  assert.equal(markDone(out, uuid(77), now), null);
+});
+
+// 87-4: the fired reminder leaves dueNow after the snooze. The merge assert
+// shows that the snoozed copy wins over the old copy, because `updatedAt` rose.
+test("snoozeReminder: a fired reminder is pending again with the new due time", () => {
+  const now = at(20, 12);
+  const r = rem(1, { dueAt: now - 60_000, firedAt: now - 59_000, preview: "p" });
+  const out = snoozeReminder([r], r.id, at(21, 9), now);
+  assert.ok(out);
+  assert.equal(out[0].dueAt, at(21, 9));
+  assert.equal(out[0].firedAt, null);
+  assert.equal(out[0].doneAt, null);
+  assert.equal(out[0].preview, "p");
+  assert.deepEqual(dueNow(out, now), []);
+  assert.deepEqual(mergeReminders([r], out), out);
+  const done = rem(2, { doneAt: now });
+  assert.equal(snoozeReminder([done], done.id, at(21, 9), now), null);
 });

@@ -78,7 +78,7 @@ import type { DisplayNameMap } from "../auth/display-names";
 // 33-2: the unread marker. Extracted to UnreadDot.tsx in 62-6 so the
 // Zuckermode conversation list renders the identical filled envelope.
 import { UnreadDot } from "./UnreadDot";
-import { ChannelGlyph, ParkingIcon } from "./icons";
+import { ChannelGlyph, ParkingIcon, ReminderIcon } from "./icons";
 
 interface Props {
   channels: ChannelSummary[];
@@ -225,6 +225,14 @@ interface Props {
   // renders as a dot -- same call as the channel rows.
   onOpenThreads?: () => void;
   threadsUnread?: number;
+  // 87-4: the Reminders entry. The row shows when onOpenReminders is set.
+  // remindersActive is the count of reminders that are not done, and the row
+  // shows it in parentheses when it is above 0. remindersFired is the count of
+  // fired reminders. Above 0, the row gets the unread dot, as the thread row
+  // does.
+  onOpenReminders?: () => void;
+  remindersActive?: number;
+  remindersFired?: number;
 }
 
 function sortFriends(friends: Friend[]): Friend[] {
@@ -322,6 +330,9 @@ export function Sidebar({
   onPark,
   onOpenThreads,
   threadsUnread = 0,
+  onOpenReminders,
+  remindersActive = 0,
+  remindersFired = 0,
 }: Props) {
   const [filter, setFilter] = useState("");
   // 54-1: the channels list gets the same filter treatment as friends.
@@ -1315,6 +1326,35 @@ export function Sidebar({
           })}
         </ul>
       </div>
+
+      {/* ---- reminders (87-4) ----
+           The row always shows on the desktop, also when the count is 0, so the
+           user can find the panel. Its classes are a copy of the threads
+           entry. The phone has no sidebar. Its entry is the head button of
+           ZuckerList. */}
+      {onOpenReminders && (
+        <div class="chalk-sidebar-section chalk-sidebar-section--reminders">
+          <button
+            type="button"
+            class="chalk-sidebar-reminders"
+            data-testid="sidebar-reminders"
+            onClick={onOpenReminders}
+            title={
+              remindersFired > 0
+                ? `${remindersFired} reminder${remindersFired === 1 ? "" : "s"} due`
+                : "your reminders"
+            }
+            aria-label={remindersFired > 0 ? "reminders, some are due" : "reminders"}
+          >
+            <span class="chalk-sidebar-reminders-glyph" aria-hidden="true">
+              <ReminderIcon size={14} />
+            </span>
+            <span class="chalk-sidebar-title">reminders</span>
+            {remindersActive > 0 && <span class="chalk-sidebar-count">({remindersActive})</span>}
+            {remindersFired > 0 && <UnreadDot mention={false} />}
+          </button>
+        </div>
+      )}
 
       {/* ---- parking lot (53-1) ----
            53-4: the row itself still only parks -- a double-click on it must
