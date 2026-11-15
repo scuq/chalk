@@ -491,6 +491,9 @@ export interface UserPrefs {
   // device's own trust ledger, and the server is the party it defends against.
   // See crypto/pin-backup.ts.
   identity_pins_enc?: string;
+  // 87-2: the message reminders, sealed the same way. A reminder names a message
+  // and a time, and the server must not read either. See chat/reminders-sync.ts.
+  reminders_enc?: string;
   // 53-1: the parking lot's title + whether its row shows.
   parkingLot?: ParkingLotPrefs;
   // 54-3: roster display prefs (channel grouping).

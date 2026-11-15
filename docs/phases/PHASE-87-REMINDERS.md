@@ -2,15 +2,15 @@
 
 A way to say "not now, but don't let me lose this" about a single message,
 without answering it, copying it somewhere, or leaving the channel unread as a
-to-do list. Designed against v0.7.2. **IN PROGRESS: slice 87-1 is built, and
-slices 87-2 to 87-9 are open.** The design was written on 4 August 2026 and
+to-do list. Designed against v0.7.2. **IN PROGRESS: slices 87-1 and 87-2 are
+built, and slices 87-3 to 87-9 are open.** The design was written on 4 August 2026 and
 revised on 15 November 2026. The revision changed the presets and added a push
 to a closed app. Each later slice starts with a new check of the code and a
 new decision from the user.
 
-**Status:** in progress, 87-1 built, design revised on 15 November 2026.
+**Status:** in progress, 87-1 and 87-2 built, design revised on 15 November 2026.
 **Tag:** `#reminders` → `tools/where.sh -g reminders` (it finds this file and
-the two files of slice 87-1).
+the files of slices 87-1 and 87-2).
 
 ## The problem
 
@@ -261,7 +261,9 @@ what the teardown rule below exists to prevent.
 Both directions go through `mergeReminders`, on the reasoning in the header
 comment of `crypto/pin-sync.ts`: a device whose localStorage was just cleared holds nothing, and
 last-write-wins would have it upload that emptiness over the set every other
-device depends on.
+device depends on. `RemindersSync` (87-2) does this. A device with an empty
+local set never deletes anything on the server. The rules sync is different: it
+overwrites.
 
 The rule is a total order over any two records with the same `id`:
 
@@ -418,16 +420,46 @@ end.
   `firedCount`. One change to an existing file: `sealedLength` in
   `crypto/pin-backup.ts` gained the `export` keyword, so there is no second copy
   of the size formula.
-- **87-2 — the sealed blob and its sync.** `web/src/chat/reminders-sync.ts`
-  (`REMINDERS_PREFS_KEY`, the HKDF pair, `sealReminders` / `openReminders`
-  version-checked and total over garbage, and a `RemindersSync` class copied from
-  `crypto/pin-sync.ts` — merge in both directions, debounced upload,
-  `applyRemote(undefined)` meaning seed-from-local, an undecryptable blob ignored
-  rather than overwritten); `web/src/chat/reminder-store.ts` for the local record
-  and the clock, localStorage-backed on `notify/rules-store.ts`'s skeleton;
-  `reminders_enc?: string` beside the other sealed keys in `UserPrefs`
-  (`state/types.ts:462-493`); the start/apply effect pair in `App.tsx` beside the
-  rules and pin syncs (near `App.tsx:1100-1200`). Tests for both new modules.
+- **87-2 — the sealed blob and its sync. BUILT.** The files are
+  `web/src/chat/reminders-sync.ts`, `web/src/chat/reminder-store.ts`, and a test
+  file for each. No server code. The sync file exports `REMINDERS_PREFS_KEY`,
+  `UPLOAD_DEBOUNCE_MS` (3 s), `RETRY_MS` (15 s), `remindersAesKey`,
+  `sealReminders`, `openReminders`, `RemindersSyncTransport`, `RemindersStorage`,
+  and `RemindersSync`. The store file exports `reminderStorageKey`,
+  `loadReminders`, `saveReminders`, `clearReminders`, and `subscribeReminders`.
+  `reminders_enc?: string` is in `UserPrefs` (`state/types.ts`), and a start
+  effect and an apply effect in `App.tsx` follow the pin sync. `handleLogout`
+  calls `clearReminders`. The decisions:
+  - `openReminders` checks the version and the shape. Then `unpackReminders`
+    skips a bad row and keeps the rest. The pin backup rejects the whole blob for
+    one bad row. A reminder is cheaper to lose than a pin.
+  - Two guards stop an echo loop. `lastJSON` holds the canonical content that the
+    server holds. `lastBlob` holds the exact ciphertext that the sync last saw or
+    sent.
+  - An undecryptable blob is ignored and nothing is sent in answer. A later local
+    change publishes over it, as in the pin sync.
+  - `RemindersSyncTransport.send` returns a boolean. If the socket is closed, the
+    send reports false, `lastJSON` goes back to its old value, and a retry runs
+    after `RETRY_MS`. The pin sync and the rules sync lose such a send until the
+    content changes.
+  - The `App.tsx` effect stops the sync and clears its ref in the cleanup. An
+    account change in one page load then starts a new sync with the new identity.
+    The three older syncs keep their first instance.
+  - The local store key is `chalk.reminders.v1.<userID>`. No other localStorage
+    store in chalk is per user. The blob is sealed with the identity of one
+    account. A store that two accounts on one browser share would upload the
+    reminders of the first account into the prefs of the second.
+  - The local store holds previews in plaintext, so `handleLogout` calls
+    `clearReminders`. The sealed blob restores the set at the next login. A change
+    that was not yet uploaded at logout is lost.
+  - The store keeps an in-memory copy for each user. If `setItem` fails (private
+    mode or quota), the set stays for the page load and the listeners still run.
+    A `storage` event from another tab drops the copy, so the next load reads
+    localStorage again.
+  - `push` prunes the done records older than `DONE_KEEP_MS` from the local set
+    and from the blob.
+  - `fitReminders` can delete previews or drop records before the seal. A dropped
+    record stays on the device, and a console warning gives the count.
 - **87-3 — setting one.** The menu item and its label, `ReminderModal.tsx`,
   `onSetReminder` in `App.tsx` (capturing channel, message id, `m.ts.getTime()`,
   seq and the clipped preview), the gutter mark and its mobile placement, and the

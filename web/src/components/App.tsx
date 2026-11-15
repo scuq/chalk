@@ -351,6 +351,13 @@ import {
   subscribeVerifications,
 } from "../crypto/idb";
 import { PinSync, type PinSyncStatus } from "../crypto/pin-sync"; // 84-2
+import { RemindersSync } from "../chat/reminders-sync"; // 87-2
+import {
+  clearReminders,
+  loadReminders,
+  saveReminders,
+  subscribeReminders,
+} from "../chat/reminder-store"; // 87-2
 import { type IdentityTransport } from "../crypto/identity-sync";
 import { fetchTrustedIdentity, markManuallyVerified, memberTrust } from "../crypto/trust"; // 82-2, 82-8
 import { computeSafetyNumber, digestToHex } from "../crypto/safety-number";
@@ -1249,6 +1256,63 @@ export function App() {
     if (!pinSyncReady || !state.prefsLoaded) return;
     void pinSyncRef.current?.applyRemote(state.prefs.identity_pins_enc);
   }, [pinSyncReady, state.prefsLoaded, state.prefs.identity_pins_enc]);
+
+  // 87-2: the reminders sync. The sealed blob `reminders_enc` and the local set
+  // stay equal, in both directions through a merge, so a device with an empty set
+  // never deletes anything on the server. Two differences from the pin sync
+  // above. The send reports false on a closed socket, and the sync retries. The
+  // cleanup stops the sync and clears the ref, so an account change in one page
+  // load starts a new sync with the new identity. The local store is per user ID.
+  const remindersSyncRef = useRef<RemindersSync | null>(null);
+  const [remindersSyncReady, setRemindersSyncReady] = useState(false);
+  useEffect(() => {
+    if (!ccReady) return;
+    const uid = state.user?.id;
+    if (!uid) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const id = await loadIdentity(uid);
+        if (!id || cancelled) return;
+        const sync = new RemindersSync();
+        await sync.start(
+          id.x25519Private,
+          {
+            send: (patch) => {
+              const c = clientRef.current;
+              if (!c || !c.isOpen()) return false;
+              c.send(TypePrefsSet, { patch });
+              return true;
+            },
+          },
+          {
+            list: () => loadReminders(uid),
+            save: (list) => saveReminders(uid, list),
+            subscribe: (onChange) => subscribeReminders(uid, onChange),
+          },
+        );
+        if (cancelled) {
+          sync.stop();
+          return;
+        }
+        remindersSyncRef.current = sync;
+        setRemindersSyncReady(true);
+      } catch (err) {
+        console.error("reminders-sync: start failed:", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      remindersSyncRef.current?.stop();
+      remindersSyncRef.current = null;
+      setRemindersSyncReady(false);
+    };
+  }, [ccReady, state.user?.id]);
+
+  useEffect(() => {
+    if (!remindersSyncReady || !state.prefsLoaded) return;
+    void remindersSyncRef.current?.applyRemote(state.prefs.reminders_enc);
+  }, [remindersSyncReady, state.prefsLoaded, state.prefs.reminders_enc]);
 
   // Phase 23d: ensure we hold a channel's key -- fetch+unwrap, or
   // creator-bootstrap a keyless channel, then auto-rewrap for members who lack
@@ -5442,6 +5506,9 @@ export function App() {
     void dropBrowserSubscription().catch((err) =>
       console.error("drop push subscription failed:", err),
     );
+    // 87-2: the local set holds previews in plaintext. The sealed blob on the
+    // server restores it at the next login. A change not yet uploaded is lost.
+    if (state.user?.id) clearReminders(state.user.id);
     dispatch({ kind: "auth_logged_out" });
   };
 
