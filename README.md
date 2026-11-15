@@ -48,6 +48,15 @@ Everything here is built and released. Features that are off by default say so.
   picker, typed emoticons that become emoji, code blocks, compact link labels,
   and link previews for YouTube and Steam that you opt in to. Nano markdown
   (italics, bold, code) is off until you turn it on.
+- **Reminders**: set a reminder on any message from its menu, with presets for
+  this evening, tomorrow morning, tomorrow evening, this weekend and next Monday,
+  or a date and time you pick. A clock mark shows on the message while the
+  reminder waits. A reminders list has show message, snooze and done. At the due
+  time the reminders entry gets a dot, the tab count includes it, and chalk
+  plays the notification sound and shows a desktop notification that jumps to
+  the message. With web push on, a reminder also reaches a closed chalk, and
+  that notification shows no message text. Reminders sync across your devices,
+  and the server cannot read them.
 - **Attachments and media**: encrypted uploads with encrypted previews, drag and
   drop, clipboard paste, per-file progress, a tile grid for several pictures, a
   gallery that pages and zooms, and video that shows a poster frame and plays in
@@ -64,7 +73,8 @@ Everything here is built and released. Features that are off by default say so.
   notification priority and rules that follow you across devices (encrypted),
   desktop banners, a blinking tab, and an unread count in the tab title. Web
   push is per device. It is off until the administrator runs `chalkctl push
-  enable`. A push names the sender and the channel and never shows the message.
+  enable`. A push never shows the message. A message push names the sender and
+  the channel, and a reminder push names neither.
 - **Privacy and encryption**: end-to-end encryption with signed envelopes,
   pinned identities and key-changed warnings, picture-word verification, a
   pinned server identity with its fingerprint in settings, notices for roster
@@ -90,7 +100,7 @@ Everything here is built and released. Features that are off by default say so.
   which is on by default on a desktop.
 - **Phone layout**: the conversation list is the phone layout, with friend
   chips, a filter bar, icon buttons for the parking lot, threads, filter, add a
-  friend and new channel, a full-width message box, grouped messages, a slide
+  friend, new channel and reminders (only while you have one), a full-width message box, grouped messages, a slide
   between the list and a chat, and a swipe back. In a call, the phone has a call
   bar, a call view with a camera flip button, and a screen wake lock. A long
   press on a row opens a sheet. Some checks on a real phone are still open (see
