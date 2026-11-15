@@ -6204,6 +6204,68 @@ body.chalk-resizing-y .chalk-composer-resizer {
   outline-offset: -1px;
 }
 
+/* 87-3: the clock mark of a row that has a pending reminder. One element, the
+   first child of the body span. With a pointer that can hover, it sits in the
+   left gutter at the place of the marker above. The (hover: none) block at the
+   end of this file puts it inline before the text. */
+.chalk-message-reminder {
+  position: absolute;
+  left: var(--chalk-s1);
+  top: var(--chalk-s1);
+  width: calc(var(--chalk-msg-gutter) - 2px);
+  box-sizing: border-box;
+  padding: 1px 0;
+  font-size: var(--chalk-size-small);
+  line-height: 1;
+  text-align: center;
+  color: var(--chalk-fg-muted);
+  cursor: default;
+}
+
+.chalk-messages--compact .chalk-message-reminder {
+  top: 1px;
+}
+
+/* 87-3: hidden while the row is hovered or its menu is open, so the mark and
+   the marker do not overlap. Only in (hover: hover), because a touch browser
+   can keep :hover after a tap. */
+@media (hover: hover) {
+  .chalk-message:hover .chalk-message-reminder,
+  .chalk-message--menu-open .chalk-message-reminder {
+    visibility: hidden;
+  }
+}
+
+/* 87-3: the reminder modal. A column of preset buttons, then the custom field
+   and its button in one row. */
+.chalk-reminder-presets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s2);
+}
+
+.chalk-reminder-preset {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--chalk-s3);
+  width: 100%;
+}
+
+.chalk-reminder-preset-when {
+  color: var(--chalk-fg-muted);
+}
+
+.chalk-reminder-custom {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--chalk-s2);
+}
+
+.chalk-reminder-custom .chalk-field {
+  flex: 1;
+  min-width: 0;
+}
+
 /* 41-3: the row menu itself. position:fixed, placed in viewport coordinates
    by the component -- the feed is an overflow:auto scroller, and the absolute
    menu this replaces was clipped by it on the last rows of a channel.
@@ -11420,6 +11482,16 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
   .chalk-message-marker {
     display: none;
+  }
+
+  /* 87-3: the gutter is 0px here, so the clock mark moves inline before the
+     text. */
+  .chalk-message-reminder {
+    position: static;
+    display: inline;
+    width: auto;
+    padding: 0;
+    margin-right: 0.4em;
   }
 
   .chalk-message {

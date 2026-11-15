@@ -8,6 +8,13 @@ import assert from "node:assert/strict";
 import { BLOB_BUDGET_BYTES } from "../crypto/pin-backup.ts";
 import {
   DONE_KEEP_MS,
+  PRESET_LABELS,
+  REMINDER_PRESETS,
+  activeCount,
+  addReminder,
+  fromLocalInput,
+  retireForMessage,
+  toLocalInput,
   PREVIEW_MAX,
   REMINDER_MAX,
   canonicalReminders,
@@ -262,4 +269,134 @@ test("dueNow, pendingFor and firedCount on a mixed set", () => {
   const marks = pendingFor(set, uuid(900));
   assert.deepEqual([...marks.keys()].sort(), [due.messageID, later.messageID].sort());
   assert.equal(marks.get(later.messageID), later);
+});
+
+test("PRESET_LABELS has a label for each preset", () => {
+  for (const p of REMINDER_PRESETS) assert.ok(PRESET_LABELS[p].length > 0);
+});
+
+test("addReminder: a new record is pending, with a clipped preview", () => {
+  const now = at(11, 15);
+  const out = addReminder(
+    [],
+    {
+      id: uuid(1),
+      channelID: uuid(900),
+      messageID: uuid(1001),
+      messageTS: at(10, 12),
+      seq: 7,
+      dueAt: at(12, 9),
+      preview: "  hello\nworld " + "x".repeat(200),
+    },
+    now,
+  );
+  assert.ok(out);
+  assert.equal(out.length, 1);
+  const r = out[0];
+  assert.equal(r.createdAt, now);
+  assert.equal(r.updatedAt, now);
+  assert.equal(r.firedAt, null);
+  assert.equal(r.doneAt, null);
+  assert.ok(r.preview?.startsWith("hello world x"));
+  assert.equal(Array.from(r.preview ?? "").length, PREVIEW_MAX);
+});
+
+test("addReminder: an empty preview is left out", () => {
+  const fields = {
+    id: uuid(1),
+    channelID: uuid(900),
+    messageID: uuid(1001),
+    messageTS: 1,
+    seq: null,
+    dueAt: at(12, 9),
+  };
+  assert.equal(addReminder([], fields, at(11, 15))?.[0].preview, undefined);
+  assert.equal(addReminder([], { ...fields, preview: "  \n " }, at(11, 15))?.[0].preview, undefined);
+});
+
+// A fired reminder that is not done is retired too. Two records stay active:
+// the unrelated one and the new one.
+test("addReminder: a second reminder on one message retires the first", () => {
+  const now = at(11, 15);
+  const first = rem(1, { preview: "p" });
+  const fired = rem(2, { messageID: first.messageID, firedAt: now - 5 });
+  const out = addReminder(
+    [first, fired, rem(3)],
+    {
+      id: uuid(9),
+      channelID: first.channelID,
+      messageID: first.messageID,
+      messageTS: first.messageTS,
+      seq: first.seq,
+      dueAt: at(12, 18),
+    },
+    now,
+  );
+  assert.ok(out);
+  assert.equal(out.length, 4);
+  assert.equal(out[0].doneAt, now);
+  assert.equal(out[0].preview, "p");
+  assert.ok(out[0].updatedAt > first.updatedAt);
+  assert.equal(out[1].doneAt, now);
+  assert.equal(out[2].doneAt, null);
+  assert.equal(activeCount(out), 2);
+  assert.deepEqual(mergeReminders([first, fired], out).filter((r) => r.doneAt === null).length, 2);
+});
+
+test("addReminder: refuses at REMINDER_MAX active reminders, done ones do not count", () => {
+  const now = at(11, 15);
+  const full: Reminder[] = [];
+  for (let i = 0; i < REMINDER_MAX; i++) full.push(rem(i));
+  const fields = {
+    id: uuid(500),
+    channelID: uuid(900),
+    messageID: uuid(5000),
+    messageTS: 1,
+    seq: 1,
+    dueAt: at(12, 9),
+  };
+  assert.equal(addReminder(full, fields, now), null);
+  const oneDone = [...full.slice(1), rem(0, { doneAt: now })];
+  assert.equal(addReminder(oneDone, fields, now)?.length, REMINDER_MAX + 1);
+  const sameMessage = { ...fields, messageID: full[0].messageID };
+  // A reminder on a message that already has one replaces it, so a full set
+  // still accepts it.
+  assert.equal(addReminder(full, sameMessage, now)?.length, REMINDER_MAX + 1);
+});
+
+test("retireForMessage: a deleted message loses its reminder and its preview", () => {
+  const now = at(20, 12);
+  const pending = rem(1, { preview: "secret" });
+  const done = rem(2, { messageID: pending.messageID, doneAt: now - 9, preview: "secret" });
+  const other = rem(3, { preview: "keep" });
+  const out = retireForMessage([pending, done, other], pending.channelID, pending.messageID, now, true);
+  assert.ok(out);
+  assert.equal(out[0].doneAt, now);
+  assert.equal(out[0].preview, undefined);
+  assert.equal(out[1].doneAt, now - 9);
+  assert.equal(out[1].preview, undefined);
+  assert.ok(out[1].updatedAt > done.updatedAt);
+  assert.equal(out[2], other);
+  assert.deepEqual(mergeReminders([pending, done, other], out), mergeReminders(out, []));
+  // A second call finds no preview and no pending record, so it changes nothing.
+  assert.equal(retireForMessage(out, pending.channelID, pending.messageID, now + 1, true), null);
+});
+
+test("retireForMessage: nothing to do gives null, and the bump beats a clock that runs behind", () => {
+  assert.equal(retireForMessage([rem(1)], uuid(900), uuid(4242), 5, true), null);
+  assert.equal(retireForMessage([rem(1)], uuid(901), rem(1).messageID, 5, true), null);
+  // The record is newer than the clock of the call, as if this device runs behind.
+  const ahead = rem(1, { updatedAt: at(25, 9) });
+  const out = retireForMessage([ahead], ahead.channelID, ahead.messageID, at(20, 9), false);
+  assert.equal(out?.[0].updatedAt, ahead.updatedAt + 1);
+});
+
+test("toLocalInput and fromLocalInput: a round trip in local time", () => {
+  const ms = new Date(2026, 0, 5, 7, 3).getTime();
+  assert.equal(toLocalInput(ms), "2026-01-05T07:03");
+  assert.equal(fromLocalInput("2026-01-05T07:03"), ms);
+  assert.equal(fromLocalInput("2026-01-05T07:03:30"), ms + 30_000);
+  assert.equal(fromLocalInput(toLocalInput(at(11, 15, 42))), at(11, 15, 42));
+  assert.equal(fromLocalInput(""), null);
+  assert.equal(fromLocalInput("tomorrow"), null);
 });

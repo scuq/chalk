@@ -15,6 +15,7 @@ function opts(over: Partial<MessageMenuOpts> = {}): MessageMenuOpts {
     canReply: true,
     canQuote: true,
     hasText: true,
+    canRemind: true,
     canEdit: true,
     canDelete: true,
     ...over,
@@ -24,7 +25,7 @@ function opts(over: Partial<MessageMenuOpts> = {}): MessageMenuOpts {
 const kinds = (o: Partial<MessageMenuOpts>) => buildMessageMenu(opts(o)).map((i) => i.kind);
 
 test("full menu is in display order", () => {
-  assert.deepEqual(kinds({}), ["react", "reply", "quote", "copy", "edit", "delete"]);
+  assert.deepEqual(kinds({}), ["react", "reply", "quote", "copy", "remind", "edit", "delete"]);
 });
 
 test("a deleted message offers nothing at all", () => {
@@ -37,7 +38,7 @@ test("a deleted message offers nothing at all", () => {
 });
 
 test("the thread panel drops reply and keeps the rest", () => {
-  assert.deepEqual(kinds({ canReply: false }), ["react", "quote", "copy", "edit", "delete"]);
+  assert.deepEqual(kinds({ canReply: false }), ["react", "quote", "copy", "remind", "edit", "delete"]);
 });
 
 test("someone else's message offers neither edit nor delete", () => {
@@ -46,17 +47,18 @@ test("someone else's message offers neither edit nor delete", () => {
     "reply",
     "quote",
     "copy",
+    "remind",
   ]);
 });
 
 test("a body-less row (attachment or gif only) offers no copy", () => {
-  assert.deepEqual(kinds({ hasText: false }), ["react", "reply", "quote", "edit", "delete"]);
+  assert.deepEqual(kinds({ hasText: false }), ["react", "reply", "quote", "remind", "edit", "delete"]);
 });
 
 test("a row with nothing said on it offers no quote", () => {
   // 107-3: a gif has a body but no speech, so copy (which takes the URL) is
   // still worth offering where quote is not.
-  assert.deepEqual(kinds({ canQuote: false }), ["react", "reply", "copy", "edit", "delete"]);
+  assert.deepEqual(kinds({ canQuote: false }), ["react", "reply", "copy", "remind", "edit", "delete"]);
 });
 
 test("the delete label passes through, defaulting to 'delete'", () => {
@@ -73,12 +75,28 @@ test("a caller with no callbacks wired gets an empty menu", () => {
         canReply: false,
         canQuote: false,
         hasText: false,
+        canRemind: false,
         canEdit: false,
         canDelete: false,
       }),
     ),
     [],
   );
+});
+
+test("remind is offered on any message when the caller wires it", () => {
+  assert.deepEqual(kinds({ canEdit: false, canDelete: false, canRemind: false }), [
+    "react",
+    "reply",
+    "quote",
+    "copy",
+  ]);
+  assert.deepEqual(kinds({ hasText: false, canQuote: false, canEdit: false, canDelete: false }), [
+    "react",
+    "reply",
+    "remind",
+  ]);
+  assert.deepEqual(kinds({ deleted: true, canRemind: true }), []);
 });
 
 test("quick reactions ride along with the react item", () => {

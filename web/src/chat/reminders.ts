@@ -421,3 +421,155 @@ export function pendingFor(list: readonly Reminder[], channelID: string): Map<st
 export function firedCount(list: readonly Reminder[]): number {
   return list.filter((r) => r.firedAt !== null && r.doneAt === null).length;
 }
+
+/**
+ * activeCount returns the number of reminders that are not done. A done
+ * reminder does not count toward REMINDER_MAX.
+ */
+export function activeCount(list: readonly Reminder[]): number {
+  return list.filter((r) => r.doneAt === null).length;
+}
+
+/**
+ * PRESET_LABELS holds the text that the reminder modal shows for each
+ * ReminderPreset.
+ */
+export const PRESET_LABELS: Record<ReminderPreset, string> = {
+  this_evening: "this evening",
+  tomorrow_morning: "tomorrow morning",
+  tomorrow_evening: "tomorrow evening",
+  weekend: "this weekend",
+  next_monday: "next monday",
+  custom: "pick a time",
+};
+
+// bump returns the new `updatedAt` of r. It is the larger of nowMs and the old
+// value plus 1, so the change wins mergeReminders also when the clock of this
+// device runs behind the clock that wrote the old value.
+function bump(r: Reminder, nowMs: number): number {
+  return Math.max(nowMs, r.updatedAt + 1);
+}
+
+/**
+ * retireForMessage takes away the reminders of one message. It returns a new
+ * list, or null if nothing changed.
+ *
+ * The merge of the sync never deletes a record, so a reminder cannot leave the
+ * set. Instead, retireForMessage marks each reminder of the message that is not
+ * done as done (`doneAt` is nowMs) and raises `updatedAt` with bump. The prune
+ * after DONE_KEEP_MS removes the record later.
+ *
+ * If dropPreview is true, retireForMessage also deletes the preview, and it
+ * does this for a record that is already done. The list keeps a done record
+ * with no preview, so the text of a deleted message does not stay in the set.
+ */
+export function retireForMessage(
+  list: readonly Reminder[],
+  channelID: string,
+  messageID: string,
+  nowMs: number,
+  dropPreview: boolean,
+): Reminder[] | null {
+  let changed = false;
+  const out = list.map((r) => {
+    if (r.channelID !== channelID || r.messageID !== messageID) return r;
+    const strip = dropPreview && r.preview !== undefined;
+    if (r.doneAt !== null && !strip) return r;
+    changed = true;
+    const next: Reminder = strip ? withoutPreview(r) : { ...r };
+    if (next.doneAt === null) next.doneAt = nowMs;
+    next.updatedAt = bump(r, nowMs);
+    return next;
+  });
+  return changed ? out : null;
+}
+
+/**
+ * A NewReminder holds the fields that the caller gives to addReminder. The
+ * caller reads them from the message. addReminder sets the other fields of a
+ * Reminder.
+ */
+export interface NewReminder {
+  id: string;
+  channelID: string;
+  messageID: string;
+  messageTS: number;
+  seq: number | null;
+  dueAt: number;
+  preview?: string;
+}
+
+/**
+ * addReminder returns list with one new pending reminder made from fields. If
+ * the set is full, it returns null.
+ *
+ * A second reminder on one message replaces the first. addReminder retires each
+ * reminder of that message that is not done, and then adds the new one. The cap
+ * counts the reminders that are not done, after this step. So a message that
+ * already has a reminder can get a new one when the set holds REMINDER_MAX
+ * reminders. If the set still holds REMINDER_MAX reminders that are not done,
+ * addReminder returns null.
+ *
+ * The preview of the new record is clipped by clipPreview. An empty preview is
+ * left out.
+ */
+export function addReminder(
+  list: readonly Reminder[],
+  fields: NewReminder,
+  nowMs: number,
+): Reminder[] | null {
+  const base = retireForMessage(list, fields.channelID, fields.messageID, nowMs, false) ?? [
+    ...list,
+  ];
+  if (activeCount(base) >= REMINDER_MAX) return null;
+  const r: Reminder = {
+    id: fields.id,
+    channelID: fields.channelID,
+    messageID: fields.messageID,
+    messageTS: fields.messageTS,
+    seq: fields.seq,
+    dueAt: fields.dueAt,
+    createdAt: nowMs,
+    updatedAt: nowMs,
+    firedAt: null,
+    doneAt: null,
+  };
+  const preview = fields.preview === undefined ? "" : clipPreview(fields.preview);
+  if (preview !== "") r.preview = preview;
+  return [...base, r];
+}
+
+// pad2 writes n with two digits or more.
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+/**
+ * toLocalInput returns the value of an `<input type="datetime-local">` for the
+ * time ms, in the local timezone of the browser. The value has the form
+ * `2026-01-05T07:03`. It has no seconds.
+ */
+export function toLocalInput(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+/**
+ * fromLocalInput returns the epoch milliseconds for the value of an
+ * `<input type="datetime-local">`, read in the local timezone of the browser.
+ * The seconds in the value are optional. If the value has another form,
+ * fromLocalInput returns null.
+ */
+export function fromLocalInput(value: string): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/.exec(value);
+  if (!m) return null;
+  const ms = new Date(
+    Number(m[1]),
+    Number(m[2]) - 1,
+    Number(m[3]),
+    Number(m[4]),
+    Number(m[5]),
+    Number(m[6] ?? 0),
+  ).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}

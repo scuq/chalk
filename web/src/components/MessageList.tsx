@@ -20,6 +20,7 @@ import type {
   ReactionSet,
 } from "../state/types";
 import { buildMessageMenu, type MessageMenuItem } from "../chat/message-menu";
+import type { Reminder } from "../chat/reminders";
 import { verifyLabel, verifyTitle } from "../chat/verify"; // 83-2
 import { LONG_PRESS_MS, pressWandered } from "../chat/press";
 import { MessageMenu } from "./MessageMenu";
@@ -502,6 +503,13 @@ interface Props {
   // knows the sender label and the body, the caller knows which composer it
   // belongs in. Absent means the item is not offered.
   onQuoteMessage?: (text: string) => void;
+  // 87-3: the menu's "remind me...". Receives the message. Absent means the
+  // item is not offered: the thread panel does not pass it, because a Reminder
+  // holds no thread ID for the jump of 87-4 to open a thread with.
+  onRemindMessage?: (m: Message) => void;
+  // 87-3: the pending reminder of each message of this channel, by message ID.
+  // A row that has an entry shows the clock mark. Absent means no marks.
+  pendingReminders?: ReadonlyMap<string, Reminder>;
   // Phase 10d: per-thread "last seen reply seq" map. Used to compute
   // the unread badge ("↳ 5 replies · 2 new"). Optional -- callers
   // that don't care (e.g. the thread panel rendering its head)
@@ -592,7 +600,7 @@ function fmtTimeAs(d: Date, fmt: "hms" | "hm" | "relative", now: Date): string {
   return fmtRelative(d, now);
 }
 
-export function MessageList({ messages: allMessages, channelID, unreadMark, ownDevice, ownUserID, ownHandle, members, presence, lastSeen, displayNames, empty, emptyTitle, display, isDM, onOpenThread, onQuoteMessage, threadSeen, canDeleteMessage, onDeleteMessage, deleteLabelFor, canEditMessage, onEditMessage, editingMessageID, reactions, onToggleReaction, onPickReaction, attachmentController, avatarFor, showAvatars = false, giphyPref, onRequestEnableGiphy, linkPreviewHide, ephemeral, flashMessageID, onFlashDone, onLoadOlder, historyComplete, oldestSeq }: Props) {
+export function MessageList({ messages: allMessages, channelID, unreadMark, ownDevice, ownUserID, ownHandle, members, presence, lastSeen, displayNames, empty, emptyTitle, display, isDM, onOpenThread, onQuoteMessage, onRemindMessage, pendingReminders, threadSeen, canDeleteMessage, onDeleteMessage, deleteLabelFor, canEditMessage, onEditMessage, editingMessageID, reactions, onToggleReaction, onPickReaction, attachmentController, avatarFor, showAvatars = false, giphyPref, onRequestEnableGiphy, linkPreviewHide, ephemeral, flashMessageID, onFlashDone, onLoadOlder, historyComplete, oldestSeq }: Props) {
   const messages = ephemeral ? allMessages.slice(-EPHEMERAL_MAX_ROWS) : allMessages;
   const endRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -687,11 +695,12 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
         canReply: Boolean(onOpenThread),
         canQuote: Boolean(onQuoteMessage) && messageText(m.body).trim().length > 0,
         hasText: m.body.trim().length > 0,
+        canRemind: Boolean(onRemindMessage),
         canEdit: Boolean(canEditMessage?.(m) && onEditMessage),
         canDelete: Boolean(canDeleteMessage?.(m) && onDeleteMessage),
         deleteLabel: deleteLabelFor?.(m),
       }),
-    [onPickReaction, onOpenThread, onQuoteMessage, canEditMessage, onEditMessage, canDeleteMessage, onDeleteMessage, deleteLabelFor],
+    [onPickReaction, onOpenThread, onQuoteMessage, onRemindMessage, canEditMessage, onEditMessage, canDeleteMessage, onDeleteMessage, deleteLabelFor],
   );
 
   // Phase 9.6i: one userID → handle lookup instead of re-scanning members per
@@ -1510,6 +1519,24 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
               );
             })()}
             <span class="chalk-message-body" data-testid="message-body">
+              {/* 87-3: the clock mark. One element, the first child of the body
+                  span. On a pointer that can hover, theme.css moves it to the
+                  left gutter, where the marker is. With (hover: none) it stays
+                  inline before the text. Only a pending reminder shows it, and
+                  a deleted row shows none. */}
+              {(() => {
+                const reminder = m.deleted ? undefined : pendingReminders?.get(m.id);
+                if (!reminder) return null;
+                return (
+                  <span
+                    class="chalk-message-reminder"
+                    title={`reminder: ${new Date(reminder.dueAt).toLocaleString()}`}
+                    data-testid={`message-reminder-${m.id}`}
+                  >
+                    <span aria-hidden="true">⏰</span>
+                  </span>
+                );
+              })()}
               {m.deleted ? (
                 <span class="chalk-message-deleted" data-testid="message-deleted">
                   message deleted
@@ -1729,6 +1756,11 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
                   // preview or gif message is sentinel framing plus payload
                   // JSON, which is not what anyone means by "copy".
                   navigator.clipboard?.writeText(clipboardText(m.body)).catch(() => {});
+                  break;
+                case "remind":
+                  // 87-3: the caller owns the modal and the store. This list
+                  // only hands over the message.
+                  onRemindMessage?.(m);
                   break;
                 case "edit":
                   onEditMessage?.(m);

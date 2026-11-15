@@ -2,15 +2,15 @@
 
 A way to say "not now, but don't let me lose this" about a single message,
 without answering it, copying it somewhere, or leaving the channel unread as a
-to-do list. Designed against v0.7.2. **IN PROGRESS: slices 87-1 and 87-2 are
-built, and slices 87-3 to 87-9 are open.** The design was written on 4 August 2026 and
+to-do list. Designed against v0.7.2. **IN PROGRESS: slices 87-1 to 87-3 are
+built, and slices 87-4 to 87-9 are open.** The design was written on 4 August 2026 and
 revised on 15 November 2026. The revision changed the presets and added a push
 to a closed app. Each later slice starts with a new check of the code and a
 new decision from the user.
 
-**Status:** in progress, 87-1 and 87-2 built, design revised on 15 November 2026.
+**Status:** in progress, 87-1 to 87-3 built, design revised on 15 November 2026.
 **Tag:** `#reminders` → `tools/where.sh -g reminders` (it finds this file and
-the files of slices 87-1 and 87-2).
+the files of slices 87-1 to 87-3).
 
 ## The problem
 
@@ -334,29 +334,34 @@ is the existing notify pipeline in `App.tsx` (the `notify/bus.ts` events), uncha
 
 ## Rendering
 
-**Setting one.** `buildMessageMenu` (`chat/message-menu.ts:43`) gains
-`{ kind: "remind" }` behind a `canRemind` opt, with its label in
-`LABELS` in `MessageMenu.tsx` (:33; the `Record<MessageMenuItem["kind"], string>` is exhaustive,
-so a missing label is a `tsc` error rather than a blank menu row). It belongs in
-the **common** group, not the `ownerKinds` set at `MessageMenu.tsx:94` — it is
-participation, not moderation. The predicate is
-`canRemind: Boolean(onSetReminder)`, a capability check like `canReact`, which is
+**Setting one.** `buildMessageMenu` (`chat/message-menu.ts`) has
+`{ kind: "remind" }` behind a `canRemind` opt, with the label "remind me..." in
+`LABELS` in `MessageMenu.tsx` (the `Record<MessageMenuItem["kind"], string>` is exhaustive,
+so a missing label is a `tsc` error rather than a blank menu row). The item sits
+after "copy text" and before "edit". It belongs in
+the **common** group, not the `ownerKinds` set in `MessageMenu.tsx` — it is
+participation, not moderation. The predicate in `MessageList.tsx` is
+`canRemind: Boolean(onRemindMessage)`, a capability check like `canReact`, which is
 what makes it apply to own and others' messages alike.
 
-Picking it opens `ReminderModal`: five preset buttons, where the preset is
-offered at that time, and a native `<input type="datetime-local">` with `min` at
+Picking it opens `ReminderModal`: one button for each preset that is
+offered at that time, each with its due time, and a native `<input type="datetime-local">` with `min` at
 now. No dependency and no new picker component; the ephemeral-TTL `<select>`
 (`ttlSecs`) in `CreateChannelModal.tsx` is the nearest precedent for the preset
 row. No inline `style=` — CSP is
 `style-src 'self'`.
 
-**The mark.** A row with a pending reminder carries a small clock in the left
-gutter (`--chalk-msg-gutter` in `theme.css`, the strip that already holds the
-`⋮` marker in `MessageList.tsx`), with the due time in its `title`.
+**The mark.** A row with a pending reminder carries a small clock. The clock is
+one element, the first child of the body span in `MessageList.tsx`, with the due
+time in its `title`. With a pointer that can hover, it sits in the left gutter
+(`--chalk-msg-gutter` in `theme.css`, the strip that already holds the `⋮`
+marker), at the place of the `⋮`. The mark is hidden while the row is hovered or
+its menu is open, so the two do not overlap. That rule is inside
+`@media (hover: hover)`, because a touch browser can keep `:hover` after a tap.
 Under `@media (hover: none)` in `theme.css` the gutter is 0px and the `⋮` is
-hidden, so on touch the mark moves inline to the head of the body span — phase
-86's answer to the same problem. Rows are found by `data-message-id`, as
-everywhere else.
+hidden, so the mark is inline before the text — phase
+86's answer to the same problem. Only a pending reminder (not fired, not done)
+shows the mark, from `pendingFor`. The mark has `data-testid="message-reminder-<id>"`.
 
 **The entry.** A new `chalk-sidebar-section--reminders` block in `Sidebar.tsx`,
 above the parking-lot block and below the friends list — ordering in that file
@@ -400,10 +405,21 @@ already uses.
 
 ## Teardown
 
-A tombstoned message drops its reminder, client-side, where the deletion frame is
-handled. The server cannot scrub what it cannot see, so this is the only place it
-can happen, and it is what stops a deleted message's cached preview living on in
-the blob. Worth an assertion in a test rather than a discovery.
+A deleted message drops its reminder on the client. The server cannot scrub what
+it cannot see, so this is the only place it can happen. It stops the cached
+preview of a deleted message from living on in the blob.
+
+The merge of the sync never deletes a record, so a reminder cannot leave the
+set. `retireForMessage` marks the reminder done (`doneAt`) and raises
+`updatedAt`. The prune after `DONE_KEEP_MS` removes the record later.
+
+An effect in `App.tsx` does the work. It looks at the loaded messages of each
+reminder. If the message is deleted, the effect runs `retireForMessage` with
+`dropPreview` true. This also deletes the preview from a record that is already
+done. The effect does not hook the `message_deleted` frame.
+
+The known limit: a reminder for a message in a channel whose history is not
+loaded keeps its preview until that channel loads.
 
 ## Slices
 
@@ -460,10 +476,39 @@ end.
     and from the blob.
   - `fitReminders` can delete previews or drop records before the seal. A dropped
     record stays on the device, and a console warning gives the count.
-- **87-3 — setting one.** The menu item and its label, `ReminderModal.tsx`,
-  `onSetReminder` in `App.tsx` (capturing channel, message id, `m.ts.getTime()`,
-  seq and the clipped preview), the gutter mark and its mobile placement, and the
-  tombstone teardown. Extends `message-menu.test.ts`.
+- **87-3 — setting one. BUILT.** The files are `web/src/components/ReminderModal.tsx`,
+  and changes in `web/src/chat/reminders.ts`, `web/src/chat/message-menu.ts`,
+  `web/src/components/MessageMenu.tsx`, `web/src/components/MessageList.tsx`,
+  `web/src/components/App.tsx`, `web/src/theme.css`, and the two test files.
+  No server code. The decisions:
+  - The menu label is "remind me...". The item sits after "copy text" and before
+    "edit". It shows on own and on other users' messages, in the channel feed
+    only. The thread panel does not pass `onRemindMessage` (see the open items).
+  - The voice-channel scratchpad does not offer the item, because its messages
+    are deleted when the call ends.
+  - `onSetReminder` in `App.tsx` captures the channel, the message ID,
+    `m.ts.getTime()`, `seq`, and the clipped preview. It calls `addReminder`.
+  - A second reminder on one message replaces the first. `addReminder` retires
+    each reminder of that message that is not done, and then adds the new one.
+  - `addReminder` returns null at `REMINDER_MAX` reminders that are not done.
+    Done records do not count. `App.tsx` then shows "25 reminders is the limit —
+    clear a few." in the modal, and the modal stays open.
+  - `retireForMessage` takes a reminder away by marking it done, because the
+    merge never deletes a record. `bump` gives `max(now, updatedAt + 1)`, so the
+    change wins the merge also when the clock of this device runs behind.
+  - The modal reads the clock when it opens and again at the click. A preset
+    that stopped being offered while the modal was open (this evening, at 18:00)
+    is not set with a wrong time.
+  - `toLocalInput` and `fromLocalInput` convert between epoch milliseconds and
+    the `datetime-local` value, in the local timezone of the browser.
+  - The clock mark and the teardown are as in *Rendering* and *Teardown*.
+    `pendingReminders` in `App.tsx` is a `useMemo` over the reminder set and the
+    active channel.
+  - The new exports of `reminders.ts` are `activeCount`, `PRESET_LABELS`,
+    `retireForMessage`, `NewReminder`, `addReminder`, `toLocalInput`, and
+    `fromLocalInput`. The tests extend `message-menu.test.ts` and
+    `reminders.test.ts`.
+  - No browser check of 87-3 was done yet.
 - **87-4 — the entry and the panel.** The sidebar row, the place of the entry on
   the phone, the zuckermode row, the `openPanel` union in both halves,
   `RemindersPanel.tsx` with jump / snooze / done. First slice a user can use end
@@ -527,6 +572,13 @@ and 87-8 add the closed app.
 - **Two limits remain for a closed app.** Nothing fires for a user without push,
   because there is no wake record and no push. The notification of a closed app
   cannot show the message text, because the service worker has no key.
+- **Reminders on thread replies are open.** The thread panel has no "remind
+  me..." item. The `Reminder` record holds no thread ID, and the jump of slice
+  87-4 needs one to open a thread. A later slice must add a thread ID to the
+  record, or the panel stays without the item.
+- **The teardown has a limit.** A reminder for a message in a channel whose
+  history is not loaded keeps its preview until that channel loads (see
+  *Teardown*).
 - **Snooze uses the same presets as setting one.** This item is settled. The
   snooze actions use the table in *What it is*.
 - **Phase 83 inheritance — actually, the absence of it.** Unlike ties, a reminder
@@ -569,6 +621,15 @@ Then a live run through the `run-chalk` skill, two users:
    stays hidden.
 10. Set reminders up to `REMINDER_MAX` and confirm the next one is refused with a
     message, not swallowed.
+
+Slice 87-3 leaves this checklist open. No browser check of 87-3 was done yet:
+
+- Set a reminder from the menu on a desktop viewport and on a phone viewport.
+- Check the clock mark, and its `title` with the due time.
+- Check that the mark is hidden while the row is hovered, and inline on a phone.
+- Set `REMINDER_MAX` reminders, and check the cap message in the modal.
+- Set a second reminder on the same message, and check that the first is gone.
+- Delete a reminded message, and check that the mark goes.
 
 After slices 87-7 and 87-8, add these steps for the closed app:
 

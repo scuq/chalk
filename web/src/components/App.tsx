@@ -236,6 +236,7 @@ import { ChannelBanner } from "./ChannelBanner"; // 111-3
 import { useDisplayPrefs } from "../display-prefs"; // 111-4
 import { dmChannelsToList } from "../avatars/prefetch"; // 112-10: DMs to list ahead of time
 import { ConfirmModal } from "./ConfirmModal";
+import { ReminderModal } from "./ReminderModal";
 import { Composer } from "./Composer";
 import { TypingLine } from "./TypingLine";
 import { JoinNotice } from "./JoinNotice"; // 82-8
@@ -352,6 +353,13 @@ import {
 } from "../crypto/idb";
 import { PinSync, type PinSyncStatus } from "../crypto/pin-sync"; // 84-2
 import { RemindersSync } from "../chat/reminders-sync"; // 87-2
+import {
+  REMINDER_MAX,
+  addReminder,
+  pendingFor,
+  retireForMessage,
+  type Reminder,
+} from "../chat/reminders"; // 87-3
 import {
   clearReminders,
   loadReminders,
@@ -1889,6 +1897,89 @@ export function App() {
     setPendingDelete(m);
     setDeleteStep(1);
   }, []);
+
+  // ---- 87-3: setting a reminder, and the teardown --------------------------
+  //
+  // The reminder set of the signed-in user. The local store is the source:
+  // the subscribe effect reads it again after each change, whether this tab or
+  // the sync (87-2) made the change.
+  const remindersUID = state.user?.id ?? null;
+  const [reminders, setReminders] = useState<Reminder[]>([]);
+  useEffect(() => {
+    if (!remindersUID) {
+      setReminders([]);
+      return undefined;
+    }
+    setReminders(loadReminders(remindersUID));
+    return subscribeReminders(remindersUID, () => setReminders(loadReminders(remindersUID)));
+  }, [remindersUID]);
+
+  // The pending reminder of each message of the active channel, for the clock
+  // marks on the rows.
+  const pendingReminders = useMemo(
+    () => pendingFor(reminders, state.activeChannelID ?? ""),
+    [reminders, state.activeChannelID],
+  );
+
+  // The message that the modal sets a reminder on. Null means the modal is
+  // closed. The error text is the cap message, and it keeps the modal open.
+  const [remindTarget, setRemindTarget] = useState<Message | null>(null);
+  const [remindError, setRemindError] = useState<string | null>(null);
+  const onRemindMessage = useCallback((m: Message) => {
+    setRemindError(null);
+    setRemindTarget(m);
+  }, []);
+  const closeRemind = useCallback(() => {
+    setRemindTarget(null);
+    setRemindError(null);
+  }, []);
+  // The modal gives a due time that it has checked. The set is read from the
+  // store here and not from state, so a change that the sync just made is not
+  // lost.
+  const onSetReminder = useCallback(
+    (dueAt: number) => {
+      const m = remindTarget;
+      if (!remindersUID || !m) return;
+      const next = addReminder(
+        loadReminders(remindersUID),
+        {
+          id: crypto.randomUUID(),
+          channelID: m.channelID,
+          messageID: m.id,
+          messageTS: m.ts.getTime(),
+          seq: m.seq,
+          dueAt,
+          preview: messageText(m.body),
+        },
+        Date.now(),
+      );
+      if (!next) {
+        setRemindError(`${REMINDER_MAX} reminders is the limit — clear a few.`);
+        return;
+      }
+      saveReminders(remindersUID, next);
+      closeRemind();
+    },
+    [remindTarget, remindersUID, closeRemind],
+  );
+
+  // Teardown. A deleted message must not keep a reminder or its preview. This
+  // effect looks at the loaded messages of each reminder, and does not hook the
+  // message_deleted frame. Known limit: if the history of the channel is not
+  // loaded, the reminder keeps its preview until the channel loads. The
+  // dropPreview argument also deletes the preview from a record that is
+  // already done.
+  useEffect(() => {
+    if (!remindersUID || reminders.length === 0) return;
+    let next: Reminder[] | null = null;
+    for (const r of reminders) {
+      if (r.doneAt !== null && r.preview === undefined) continue;
+      const m = state.messages[r.channelID]?.find((x) => x.id === r.messageID);
+      if (!m?.deleted) continue;
+      next = retireForMessage(next ?? reminders, r.channelID, r.messageID, Date.now(), true) ?? next;
+    }
+    if (next) saveReminders(remindersUID, next);
+  }, [reminders, state.messages, remindersUID]);
 
   // ---- 37-3: message editing --------------------------------------------
   //
@@ -6809,6 +6900,11 @@ export function App() {
                 });
               }}
               onQuoteMessage={onQuoteFeed}
+              // 87-3: not in a voice channel, because its scratchpad messages
+              // are deleted when the call ends. The thread panel passes
+              // neither prop.
+              onRemindMessage={activeChannel.channelType === "voice" ? undefined : onRemindMessage}
+              pendingReminders={pendingReminders}
               empty={!state.historyLoaded[activeChannel.id]
                 ? "loading history..."
                 : activeChannel.channelType === "voice"
@@ -7178,6 +7274,14 @@ export function App() {
           setPendingDelete(null);
           setDeleteStep(1);
         }}
+      />
+
+      {/* 87-3: the reminder modal. Opens from the row menu. */}
+      <ReminderModal
+        open={remindTarget !== null}
+        error={remindError}
+        onPick={onSetReminder}
+        onCancel={closeRemind}
       />
 
       {/* att-4b: Giphy consent. Reuses ConfirmModal -- confirm enables Giphy

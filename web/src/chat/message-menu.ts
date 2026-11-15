@@ -18,6 +18,7 @@ export type MessageMenuItem =
   | { kind: "reply" }
   | { kind: "quote" }
   | { kind: "copy" }
+  | { kind: "remind" } // 87-3: opens the reminder modal
   | { kind: "edit" }
   | { kind: "delete"; label: string };
 
@@ -30,6 +31,9 @@ export interface MessageMenuOpts {
    *  what its sender SAID is, and quoting "" helps nobody. */
   canQuote: boolean;
   hasText: boolean;
+  /** 87-3: is a reminder offered? The caller wires it for any message, own or
+   *  not, so this is a capability check and not an ownership test. */
+  canRemind: boolean;
   canEdit: boolean;
   canDelete: boolean;
   /** Democratic channels call it "propose deletion" -- see deletepolicy.ts. */
@@ -49,6 +53,9 @@ export function buildMessageMenu(opts: MessageMenuOpts): MessageMenuItem[] {
   // and they belong together. Copy is not an answer, it is an exit.
   if (opts.canQuote) items.push({ kind: "quote" });
   if (opts.hasText) items.push({ kind: "copy" });
+  // 87-3: after copy, so the items that every viewer can get stay together.
+  // Before edit and delete, which depend on who sent the message.
+  if (opts.canRemind) items.push({ kind: "remind" });
   if (opts.canEdit) items.push({ kind: "edit" });
   if (opts.canDelete) items.push({ kind: "delete", label: opts.deleteLabel ?? "delete" });
   return items;

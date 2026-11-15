@@ -489,17 +489,19 @@ subscribe.
   was made with, and the dispatcher lists only rows that match the current
   key. 65-5 must pass the current key to `ListPushSubscriptionsForUsers`.
 
-## Phase 87 — message reminders: IN PROGRESS, 87-1 and 87-2 built
+## Phase 87 — message reminders: IN PROGRESS, 87-1 to 87-3 built
 
 Message reminders bring one message back later. 87-1 is built: the pure rules
 in `web/src/chat/reminders.ts`, with tests. 87-2 is built: the sealed prefs
-blob, its sync across devices, and the local store. The presets are this evening,
+blob, its sync across devices, and the local store. 87-3 added the "remind
+me..." menu item, the modal, the clock mark on a message row, and the retirement of
+a reminder when its message is gone. The presets are this evening,
 tomorrow morning, tomorrow evening, weekend, next Monday, and a custom time.
 The whole set of reminders lives in a sealed prefs blob, and the ceiling is 25
 reminders. For a user with web push, the server also holds a wake record for
 each pending reminder, so that a reminder fires when chalk is closed. The
-record holds a due time and a random ID, and no message. Slices 87-3 to 87-9
-are open. Record in
+record holds a due time and a random ID, and no message. Slices 87-4 to 87-9
+are open. The browser check of 87-3 is open. Record in
 [phases/PHASE-87-REMINDERS.md](phases/PHASE-87-REMINDERS.md).
 
 - **Observation:** the rules sync, the peer-audio sync, and the pin sync keep

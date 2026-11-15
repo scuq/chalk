@@ -35,6 +35,7 @@ const LABELS: Record<MessageMenuItem["kind"], string> = {
   reply: "reply in thread",
   quote: "quote",
   copy: "copy text",
+  remind: "remind me...", // 87-3: opens a modal, so the label ends in "..."
   edit: "edit",
   delete: "delete",
 };

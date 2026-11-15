@@ -78,7 +78,7 @@ as-built rather than a contemporaneous plan.
 | 84 | identity-pin backup | [PHASE-84-PINBACKUP.md](phases/PHASE-84-PINBACKUP.md) |
 | 85 | operational logging | [PHASE-85-OPLOG.md](phases/PHASE-85-OPLOG.md) |
 | 86 | ties: answering without quoting — **planned, not started** | [PHASE-86-TIES.md](phases/PHASE-86-TIES.md) |
-| 87 | message reminders *(in progress, 87-1 and 87-2 built)* | [PHASE-87-REMINDERS.md](phases/PHASE-87-REMINDERS.md) |
+| 87 | message reminders *(in progress, 87-1 to 87-3 built)* | [PHASE-87-REMINDERS.md](phases/PHASE-87-REMINDERS.md) |
 | 88 | federation — **considered and declined** | [PHASE-88-FEDERATION.md](phases/PHASE-88-FEDERATION.md) |
 | 89 | the friend-request hint | [PHASE-89-REQUESTHINT.md](phases/PHASE-89-REQUESTHINT.md) |
 | 90 | a local idle agent — **planned, not started** | [PHASE-90-IDLEEXT.md](phases/PHASE-90-IDLEEXT.md) |
