@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -60,6 +61,9 @@ type Client struct {
 	limit   int
 	rating  string
 	hc      *http.Client
+
+	// ipv4Only (65-11), when true, makes the default HTTP client dial tcp4.
+	ipv4Only bool
 }
 
 // Option customizes a Client (used by tests to point at an httptest server).
@@ -75,19 +79,47 @@ func WithHTTPClient(hc *http.Client) Option {
 	return func(c *Client) { c.hc = hc }
 }
 
+// WithIPv4Only makes the default HTTP client dial with network "tcp4". The
+// client then tries no IPv6 address. It does not change a client from
+// WithHTTPClient.
+func WithIPv4Only() Option {
+	return func(c *Client) { c.ipv4Only = true }
+}
+
+// dialContext returns the dial function for the HTTP transport. If ipv4Only is
+// false, it returns d.DialContext. If ipv4Only is true, the function ignores
+// the network argument and dials "tcp4", so the resolver asks for A records only.
+func dialContext(d *net.Dialer, ipv4Only bool) func(context.Context, string, string) (net.Conn, error) {
+	if !ipv4Only {
+		return d.DialContext
+	}
+	return func(ctx context.Context, _, addr string) (net.Conn, error) {
+		return d.DialContext(ctx, "tcp4", addr)
+	}
+}
+
 // New builds a Client. apiKey must be non-empty (callers gate on
 // GiphyConfig.Enabled() first). limit/rating come from config; timeout
 // sets the HTTP client deadline.
 func New(apiKey string, limit int, rating string, timeout time.Duration, opts ...Option) *Client {
+	def := &http.Client{Timeout: timeout}
 	c := &Client{
 		apiKey:  apiKey,
 		baseURL: defaultBaseURL,
 		limit:   limit,
 		rating:  rating,
-		hc:      &http.Client{Timeout: timeout},
+		hc:      def,
 	}
 	for _, o := range opts {
 		o(c)
+	}
+	// 65-11: change only the default client. A client from WithHTTPClient is
+	// the caller's and stays as it is. The transport is a clone of
+	// http.DefaultTransport with the IPv4 dial function.
+	if c.ipv4Only && c.hc == def {
+		tr := http.DefaultTransport.(*http.Transport).Clone()
+		tr.DialContext = dialContext(&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}, true)
+		def.Transport = tr
 	}
 	return c
 }

@@ -76,8 +76,13 @@ type Sender struct {
 
 // NewSender returns a Sender that signs with key and gives up on one push
 // after timeout. Its HTTP client connects only to public addresses and
-// follows no redirect.
-func NewSender(key *VAPIDKey, timeout time.Duration) *Sender {
+// follows no redirect. The options (65-11) change how the client dials, for
+// example [WithIPv4Only].
+func NewSender(key *VAPIDKey, timeout time.Duration, opts ...SenderOption) *Sender {
+	var so senderOptions
+	for _, o := range opts {
+		o(&so)
+	}
 	// The dial-time guard checks the address of each connection after DNS.
 	// The transport sets Proxy to nil on purpose. With a proxy, the guard
 	// would check the address of the proxy and not the address of the
@@ -93,11 +98,37 @@ func NewSender(key *VAPIDKey, timeout time.Duration) *Sender {
 		now: time.Now,
 		hc: &http.Client{
 			Timeout:   timeout,
-			Transport: &http.Transport{DialContext: dialer.DialContext, Proxy: nil},
+			Transport: &http.Transport{DialContext: dialContext(dialer, so.ipv4Only), Proxy: nil},
 			CheckRedirect: func(*http.Request, []*http.Request) error {
 				return http.ErrUseLastResponse
 			},
 		},
+	}
+}
+
+// senderOptions holds the settings that a [SenderOption] changes.
+type senderOptions struct {
+	ipv4Only bool
+}
+
+// A SenderOption changes one setting of a [Sender] at construction.
+type SenderOption func(*senderOptions)
+
+// WithIPv4Only returns a SenderOption that makes the Sender dial with network
+// "tcp4". The Sender then tries no IPv6 address.
+func WithIPv4Only() SenderOption {
+	return func(o *senderOptions) { o.ipv4Only = true }
+}
+
+// dialContext returns the dial function for the HTTP transport. If ipv4Only is
+// false, it returns d.DialContext. If ipv4Only is true, the function ignores
+// the network argument and dials "tcp4", so the resolver asks for A records only.
+func dialContext(d *net.Dialer, ipv4Only bool) func(context.Context, string, string) (net.Conn, error) {
+	if !ipv4Only {
+		return d.DialContext
+	}
+	return func(ctx context.Context, _, addr string) (net.Conn, error) {
+		return d.DialContext(ctx, "tcp4", addr)
 	}
 }
 

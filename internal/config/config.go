@@ -126,6 +126,17 @@ type Config struct {
 	// anchor to verify against, and refusing them here would kill every
 	// guest link outright rather than harden anything.
 	WrapSigRequired bool
+
+	// OutboundIPv4Only (65-11), when true, makes each outbound HTTP client of
+	// chalkd dial with network "tcp4". The resolver then asks for A records
+	// only, and chalkd tries no IPv6 address. It covers the Web Push sender,
+	// the link preview fetcher, and the Giphy search proxy. It does not
+	// cover SMTP mail.
+	//
+	// CHALK_OUTBOUND_IPV4_ONLY, default false. Use it on a host where IPv6
+	// is on but has no route to the internet.
+	OutboundIPv4Only bool
+
 	// ServerIDKey (83-6) is chalkd's long-term Ed25519 identity: standard
 	// base64 of the 32-byte seed, from CHALK_SERVER_ID_KEY (chalkctl init
 	// generates it; `chalkctl serverkey show` prints its fingerprint).
@@ -310,6 +321,8 @@ func Load(args []string) (Config, error) {
 		"allow registration without an invite token (CHALK_OPEN_REGISTRATION)")
 	fs.BoolVar(&c.WrapSigRequired, "wrap-sig-required", c.WrapSigRequired,
 		"refuse unsigned channel-key wraps (CHALK_WRAP_SIG_REQUIRED)")
+	fs.BoolVar(&c.OutboundIPv4Only, "outbound-ipv4-only", c.OutboundIPv4Only,
+		"use IPv4 only for outbound HTTP connections (CHALK_OUTBOUND_IPV4_ONLY)")
 
 	showVersion := fs.Bool("version", false, "print version and exit")
 	fs.Usage = func() {
@@ -375,6 +388,10 @@ func (c *Config) applyEnv() {
 	// 82-6: signed-wrap enforcement flag.
 	if v := os.Getenv("CHALK_WRAP_SIG_REQUIRED"); v != "" {
 		c.WrapSigRequired = parseBool(v)
+	}
+	// 65-11: IPv4-only switch for the outbound HTTP clients.
+	if v := os.Getenv("CHALK_OUTBOUND_IPV4_ONLY"); v != "" {
+		c.OutboundIPv4Only = parseBool(v)
 	}
 	// 83-6: the server identity key.
 	if v := os.Getenv("CHALK_SERVER_ID_KEY"); v != "" {

@@ -121,6 +121,7 @@ func runInit(args []string) error {
 		publicIP    = fs.String("public-ip", "", "coturn listening/relay/external IPv4 (default: detect)")
 		pushOn      = fs.Bool("push", true, "enable web push notifications (each user still chooses for each device)")
 		pushSubject = fs.String("push-subject", "", "CHALK_VAPID_SUBJECT operator contact, a mailto: or https: URL (default: https://<domain>)")
+		ipv4Only    = fs.Bool("ipv4-only", false, "CHALK_OUTBOUND_IPV4_ONLY: chalkd uses IPv4 only for outbound HTTP (push, link previews, GIF search)")
 	)
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -185,6 +186,9 @@ func runInit(args []string) error {
 	}
 	if set["push-subject"] {
 		cfg.PushSubject = *pushSubject
+	}
+	if set["ipv4-only"] {
+		cfg.OutboundIPv4Only = *ipv4Only
 	}
 	if set["thread-active-window-hours"] {
 		cfg.ThreadActiveWindowHours = *threadWin

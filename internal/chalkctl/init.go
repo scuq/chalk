@@ -315,6 +315,9 @@ func Init(o InitOptions) error {
 		VAPIDPrivateKey: vapidPriv,
 		VAPIDSubject:    pushSubject(cfg.PushSubject, cfg.Domain),
 
+		// 65-11: the env file always carries the value, true or false.
+		OutboundIPv4Only: cfg.OutboundIPv4Only,
+
 		// A re-apply during a maintenance window must not quietly put the
 		// site back in front of users -- you are in maintenance because work
 		// is in progress. `chalkctl maint off` is what ends it.

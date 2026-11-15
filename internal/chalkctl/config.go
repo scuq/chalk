@@ -99,6 +99,10 @@ type Config struct {
 	// https://<Domain>.
 	PushEnabled bool   // CHALK_PUSH_ENABLED
 	PushSubject string // CHALK_VAPID_SUBJECT
+
+	// 65-11: IPv4 only for the outbound HTTP clients of chalkd. Config key
+	// OUTBOUND_IPV4_ONLY. `init --ipv4-only` sets it, and `init --force` keeps it.
+	OutboundIPv4Only bool // CHALK_OUTBOUND_IPV4_ONLY
 }
 
 // DefaultConfig returns the baseline before file/flag overlays.
@@ -254,6 +258,12 @@ func LoadConfigFile(cfg Config, path string) (Config, error) {
 			cfg.PushEnabled = b
 		case "PUSH_SUBJECT":
 			cfg.PushSubject = v
+		case "OUTBOUND_IPV4_ONLY":
+			b, err := strconv.ParseBool(v)
+			if err != nil {
+				return cfg, fmt.Errorf("%s:%d: OUTBOUND_IPV4_ONLY not a bool: %q", path, line, v)
+			}
+			cfg.OutboundIPv4Only = b
 		case "EPHEMERAL_MAX_TTL_HOURS":
 			n, err := strconv.Atoi(v)
 			if err != nil {
@@ -322,6 +332,7 @@ func (c Config) Save(path string) error {
 	if c.PushSubject != "" {
 		fmt.Fprintf(&b, "PUSH_SUBJECT=%s\n", c.PushSubject)
 	}
+	fmt.Fprintf(&b, "OUTBOUND_IPV4_ONLY=%t\n", c.OutboundIPv4Only)
 	if c.EphemeralMaxTTLHours > 0 {
 		fmt.Fprintf(&b, "EPHEMERAL_MAX_TTL_HOURS=%d\n", c.EphemeralMaxTTLHours)
 	}

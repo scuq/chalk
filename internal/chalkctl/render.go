@@ -66,6 +66,9 @@ type InitParams struct {
 	VAPIDPrivateKey string
 	VAPIDSubject    string
 
+	// 65-11: the value of CHALK_OUTBOUND_IPV4_ONLY in the env file.
+	OutboundIPv4Only bool
+
 	// 72-5: maintenance mode. Caddyfile-only -- when set, Caddy serves the
 	// notice instead of proxying chalkd. The message is already HTML-escaped
 	// by the time it gets here (see Maint).

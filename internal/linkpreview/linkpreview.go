@@ -75,6 +75,7 @@ type Client struct {
 	hc           *http.Client
 	oembedBase   string // YouTube oEmbed endpoint; overridden in tests
 	allowPrivate bool   // tests only: httptest servers are loopback
+	ipv4Only     bool   // 65-11: dial tcp4 only
 }
 
 // Option customizes a Client.
@@ -84,6 +85,25 @@ type Option func(*Client)
 // httptest servers listen on loopback, which production must reject.
 func WithAllowPrivateAddrs() Option {
 	return func(c *Client) { c.allowPrivate = true }
+}
+
+// WithIPv4Only makes the default HTTP client dial with network "tcp4". The
+// client then tries no IPv6 address. WithHTTPClient replaces the client, and
+// then this option has no effect.
+func WithIPv4Only() Option {
+	return func(c *Client) { c.ipv4Only = true }
+}
+
+// dialContext returns the dial function for the HTTP transport. If ipv4Only is
+// false, it returns d.DialContext. If ipv4Only is true, the function ignores
+// the network argument and dials "tcp4", so the resolver asks for A records only.
+func dialContext(d *net.Dialer, ipv4Only bool) func(context.Context, string, string) (net.Conn, error) {
+	if !ipv4Only {
+		return d.DialContext
+	}
+	return func(ctx context.Context, _, addr string) (net.Conn, error) {
+		return d.DialContext(ctx, "tcp4", addr)
+	}
 }
 
 // WithHTTPClient replaces the guarded HTTP client wholesale (tests). The
@@ -114,7 +134,7 @@ func New(timeout time.Duration, opts ...Option) *Client {
 	c.hc = &http.Client{
 		Timeout: timeout,
 		Transport: &http.Transport{
-			DialContext:       dialer.DialContext,
+			DialContext:       dialContext(dialer, c.ipv4Only),
 			DisableKeepAlives: true, // one-shot fetches; hold no sockets to strangers
 		},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {

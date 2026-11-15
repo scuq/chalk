@@ -217,3 +217,33 @@ func TestWrapSigRequired(t *testing.T) {
 		t.Errorf("flag=true should override env=false; got WrapSigRequired=false")
 	}
 }
+
+// TestOutboundIPv4Only checks the default (false), the env variable, and that
+// the flag overrides the env variable.
+func TestOutboundIPv4Only(t *testing.T) {
+	t.Setenv("CHALK_OUTBOUND_IPV4_ONLY", "")
+	c, err := Load([]string{"--db-url", "postgres://x"})
+	if err != nil {
+		t.Fatalf("Load default: %v", err)
+	}
+	if c.OutboundIPv4Only {
+		t.Errorf("default OutboundIPv4Only = true, want false")
+	}
+
+	t.Setenv("CHALK_OUTBOUND_IPV4_ONLY", "true")
+	c, err = Load([]string{"--db-url", "postgres://x"})
+	if err != nil {
+		t.Fatalf("Load env=true: %v", err)
+	}
+	if !c.OutboundIPv4Only {
+		t.Errorf("env=true: OutboundIPv4Only = false, want true")
+	}
+
+	c, err = Load([]string{"--db-url", "postgres://x", "--outbound-ipv4-only=false"})
+	if err != nil {
+		t.Fatalf("Load flag override: %v", err)
+	}
+	if c.OutboundIPv4Only {
+		t.Errorf("flag=false must override env=true")
+	}
+}

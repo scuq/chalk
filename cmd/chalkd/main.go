@@ -189,6 +189,22 @@ func run(args []string) error {
 	// When unset, giphyClient stays nil -> the search endpoint answers 503
 	// and /api/auth/config reports giphy_enabled=false. The key never
 	// leaves the server.
+	// 65-11: CHALK_OUTBOUND_IPV4_ONLY gives the same option to the three
+	// outbound HTTP clients: Giphy, link preview, and Web Push. SMTP mail does
+	// not use it. The log line shows the choice.
+	var (
+		giphyOpts []giphy.Option
+		lpOpts    []linkpreview.Option
+		pushOpts  []webpush.SenderOption
+	)
+	if cfg.OutboundIPv4Only {
+		giphyOpts = append(giphyOpts, giphy.WithIPv4Only())
+		lpOpts = append(lpOpts, linkpreview.WithIPv4Only())
+		pushOpts = append(pushOpts, webpush.WithIPv4Only())
+		log.Printf("outbound: IPv4 only (CHALK_OUTBOUND_IPV4_ONLY=true)")
+	} else {
+		log.Printf("outbound: IPv4 and IPv6 (CHALK_OUTBOUND_IPV4_ONLY=false)")
+	}
 	var giphyClient *giphy.Client
 	if cfg.Giphy.Enabled() {
 		giphyClient = giphy.New(
@@ -196,6 +212,7 @@ func run(args []string) error {
 			cfg.Giphy.SearchLimit,
 			cfg.Giphy.Rating,
 			cfg.Giphy.Timeout(),
+			giphyOpts...,
 		)
 		log.Printf("giphy: search proxy enabled (limit=%d rating=%s)",
 			cfg.Giphy.SearchLimit, cfg.Giphy.Rating)
@@ -208,7 +225,7 @@ func run(args []string) error {
 	// reports linkpreview_enabled=false.
 	var lpClient *linkpreview.Client
 	if cfg.LinkPreview.Enabled {
-		lpClient = linkpreview.New(cfg.LinkPreview.Timeout())
+		lpClient = linkpreview.New(cfg.LinkPreview.Timeout(), lpOpts...)
 		log.Printf("linkpreview: enabled (domains=%v)", cfg.LinkPreview.Domains)
 	} else {
 		log.Printf("linkpreview: disabled (CHALK_LINKPREVIEW_ENABLED=false)")
@@ -224,7 +241,7 @@ func run(args []string) error {
 		if err != nil {
 			return fmt.Errorf("push: %w", err)
 		}
-		pushSender = webpush.NewSender(key, pushSendTimeout)
+		pushSender = webpush.NewSender(key, pushSendTimeout, pushOpts...)
 		log.Printf("push: enabled (subject=%s)", cfg.Push.Subject)
 	} else {
 		log.Printf("push: disabled (CHALK_PUSH_ENABLED=false)")

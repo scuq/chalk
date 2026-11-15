@@ -260,3 +260,22 @@ func ensurePhase65Env(envPath, configPath, domain, subject string, log io.Writer
 		"web push (backfilled off by chalkctl update)", log)
 	return err
 }
+
+// ensureOutboundEnv backfills CHALK_OUTBOUND_IPV4_ONLY=false (65-11) into an
+// existing env file. If the env file gets the line, and the chalkctl config
+// file exists, it also adds OUTBOUND_IPV4_ONLY=false there. Then a later
+// `init --force` keeps the value. A present value is never changed, and a
+// missing config file is not created.
+func ensureOutboundEnv(envPath, configPath string, log io.Writer) error {
+	added, err := appendEnvVar(envPath, "CHALK_OUTBOUND_IPV4_ONLY", "false",
+		"outbound HTTP address family (backfilled by chalkctl; true = IPv4 only)", log)
+	if err != nil || !added {
+		return err
+	}
+	if _, serr := os.Stat(configPath); serr != nil {
+		return nil
+	}
+	_, err = appendEnvVar(configPath, "OUTBOUND_IPV4_ONLY", "false",
+		"outbound HTTP address family (backfilled by chalkctl update)", log)
+	return err
+}

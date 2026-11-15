@@ -63,6 +63,7 @@ All flags are also available as `CHALK_*` env vars (e.g. `--listen` ↔ `CHALK_L
 | — | `CHALK_VAPID_PUBLIC_KEY` | (chalkctl-generated) | phase 65: web push public key, base64url. It must belong to the private key |
 | — | `CHALK_VAPID_PRIVATE_KEY` | (chalkctl-generated) | phase 65: web push private key, base64url. Keep it secret |
 | — | `CHALK_VAPID_SUBJECT` | `https://<domain>` | phase 65: your contact for the push services, a `mailto:` or `https:` URL |
+| `--outbound-ipv4-only` | `CHALK_OUTBOUND_IPV4_ONLY` | `false` | phase 65-11: if `true`, push, link previews, and GIF search dial IPv4 only. SMTP mail ignores it. See “Outbound IPv4 only” below |
 | | `CHALK_VOICE_ENABLED` | `false` | phase 30: master switch for voice/video |
 | | `CHALK_VOICE_MAX_PARTICIPANTS` | `5` | mesh room cap (2..16) |
 | | `CHALK_VOICE_FORCE_RELAY` | `false` | test knob: clients use relay-only ICE |
@@ -204,9 +205,10 @@ interception — that is the wall doing its job.
 
 ## Web push (phase 65)
 
-Web push lets chalk wake a closed app on a phone. Push is not yet delivered:
-chalkd does not send a push in this version. The settings exist now, so the
-key pair is in place when the sending code ships.
+Web push lets chalk wake a closed app on a phone. If push is on, chalkd sends
+a push for a new message to a user who is away or offline. It also sends a
+push for a due reminder to a user who has push on. A push never shows message
+text.
 
 chalkd identifies itself to the push services of Apple and Google with a
 VAPID key pair. VAPID is the standard that lets a push service know which
@@ -248,6 +250,30 @@ they come from your server.
 
 Each user must still turn push on for each device. `/api/auth/config`
 reports only `push_enabled`. It never carries key material.
+
+## Outbound IPv4 only (phase 65-11)
+
+chalkd makes outbound HTTP requests for three features: push, link previews,
+and GIF search. If `CHALK_OUTBOUND_IPV4_ONLY` is `true`, each of the three
+clients dials with network `tcp4`. The resolver then asks for A records only,
+and chalkd tries no IPv6 address. The default is `false`.
+
+Use it on a host where IPv6 is on but has no route to the internet. The
+switch does not cover SMTP mail, because `internal/mail` dials through
+`net/smtp`. It does not cover the HTTP clients of `chalkctl`, because they run
+on the host.
+
+To turn it on in a running deployment:
+
+1. Set `CHALK_OUTBOUND_IPV4_ONLY=true` in `/etc/chalk/chalk.env`.
+2. Set `OUTBOUND_IPV4_ONLY=true` in `/etc/chalk/chalkctl.conf`, so that `init --force` keeps it.
+3. Run `systemctl restart chalkd`.
+4. Make sure `journalctl -u chalkd` shows `outbound: IPv4 only`.
+
+`chalkctl init --ipv4-only` writes `true` into the env file of a new
+deployment. `chalkctl update` adds `CHALK_OUTBOUND_IPV4_ONLY=false` to an
+existing env file, and `OUTBOUND_IPV4_ONLY=false` to the chalkctl config file
+if that file exists. It never changes a value that is present.
 
 ## Backups
 

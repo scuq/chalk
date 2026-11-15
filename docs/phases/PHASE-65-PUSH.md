@@ -3,7 +3,7 @@
 Push notifications that reach an iPhone home-screen chalk with the app fully
 closed, without breaking the E2E privacy model and without any paid accounts.
 Planned against v0.5.2. **In progress, as of 14 November 2026** — slices 65-1
-to 65-9 are built, and the plan below was revised that day (next section).
+to 65-9 and 65-11 are built, and the plan below was revised that day (next section).
 
 ## Review of 14 November 2026
 
@@ -279,6 +279,7 @@ envelope signature against the pins before it shows any text.
 | 65-8 (built) | The "Push" part in Settings > notifications: `PushSettings.tsx`, mounted in `ProfilePanel.tsx` after "do not disturb". It has a switch for push on this device and a select for direct messages or all messages. It shows hints for an iPhone or iPad outside the Home Screen, a browser without push, an unsealed connection, and blocked notifications. It renders nothing if the server has push off. Also `pushAvailability` and `pushErrorText` in `push.ts`, `AuthConfig.push_enabled`, the settings search keyword `push`, tests, and 10 checks in `push-page.mjs`. Changelog bullet | web/src/components/, web/src/notify/, web/src/auth/types.ts, web/src/settings-nav.ts, .claude/skills/run-chalk/ | 300 |
 | 65-9 (built) | Notification click opens the chat (open app, closed app, phone): `openURL` and `parseOpenURL` in `sw-logic.ts`, the worker opens `openURL(target)`, `openFromNotification` and the cold-start target in `App.tsx`, two tests, and 12 checks in `push-page.mjs` with an iPhone 14 device descriptor. Also the payload-contract section in `docs/wire-protocol.md` and the changelog bullet. The real-device checks are open | web/src/, web/src/components/App.tsx, .claude/skills/run-chalk/, docs/ | 80 |
 | 65-10 (optional, deferred) | "Hide details" lock-screen mode (generic "new activity" text). `generic` column ships in 0063 up front so no second migration. | — | 60 |
+| 65-11 (built) | `CHALK_OUTBOUND_IPV4_ONLY` and `--outbound-ipv4-only`: the Web Push sender, the link preview fetcher, and the Giphy client dial with `tcp4`. Option `WithIPv4Only` in each package, and a startup log line. `chalkctl init --ipv4-only`, the config key `OUTBOUND_IPV4_ONLY` kept by `init --force`, the backfill in `update`, the env template, tests, the table row and the part "Outbound IPv4 only" in `docs/deployment.md`, and the changelog bullet. The check on a real iPhone is open | cmd/, internal/config/, internal/webpush/, internal/linkpreview/, internal/giphy/, internal/chalkctl/, docs/ | 330 |
 
 Total ≈ 2,100 LOC, roughly half tests — comparable to the phase-31 or
 phase-57 arcs. Each slice passes the full verify chain independently.
@@ -521,6 +522,44 @@ Requires real hardware:
      - A thread reply opens the thread.
   3. On desktop Chrome or Firefox: a push while the browser is open but no
      chalk tab is open opens a new tab at the chat.
+  4. After the operator turns on `CHALK_OUTBOUND_IPV4_ONLY` (65-11), a push to
+     a locked iPhone arrives, and `journalctl -u chalkd` has no
+     `push: send to subscription` line. This check is open.
+
+## Decisions from 65-11
+
+- **Problem.** On a host where IPv6 is on but has no route to the internet,
+  a push to an iPhone timed out. The log showed
+  `push: send to subscription ...: context deadline exceeded` after 10 s on
+  the POST to the push service of Apple. The cause is unknown. It is not
+  proven to be IPv6, because the Go dialer usually falls back to IPv4 300 ms
+  after a stalled IPv6 dial. The slice gives the operator a switch for a host
+  with IPv6 that does not work. It does not correct the timeout until a test
+  on that host shows that it does.
+- **Design.** `CHALK_OUTBOUND_IPV4_ONLY` is a boolean, default `false`. If it
+  is `true`, each outbound HTTP client of chalkd dials with network `tcp4`.
+  The resolver then asks for A records only, and chalkd tries no IPv6
+  address. Three clients use it: the Web Push sender, the link preview
+  fetcher, and the Giphy search proxy. Each package has its own
+  `WithIPv4Only` option and `dialContext` function. chalkd logs the choice at
+  start. The Giphy client changes only its default client. A client from
+  `WithHTTPClient` stays as it is.
+- **chalkctl.** `chalkctl init` always writes the value to the env file.
+  `init --ipv4-only` writes `true`. The config key `OUTBOUND_IPV4_ONLY` lets
+  `init --force` keep the value. `update` backfills `false` into the env file,
+  and into the config file if it exists. It never changes a value that is
+  present.
+- **Rejected: `/etc/gai.conf` precedence.** The Go resolver ignores the file,
+  and the container does not read the file of the host.
+- **Rejected: `Sysctl=net.ipv6.conf.all.disable_ipv6=1` in the chalkd
+  quadlet.** It works, but each operator must find it alone.
+- **Rejected: a switch for push only.** The link preview fetcher and the
+  Giphy client dial the same path.
+- **Not built.** SMTP mail does not obey the switch, because `internal/mail`
+  dials through `net/smtp`. The HTTP clients of `chalkctl` do not obey it,
+  because they run on the host. There is no `chalkctl` subcommand that flips
+  the switch.
+- **Open check.** See item 4 of the manual list in "Decisions from 65-9".
 
 ## Risks
 

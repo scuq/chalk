@@ -148,6 +148,10 @@ func Update(o UpdateOptions) error {
 	if err := ensurePhase65Env(o.EnvPath, o.ConfigPath, o.Cfg.Domain, o.Cfg.PushSubject, o.Out); err != nil {
 		return fmt.Errorf("ensure phase 65 env: %w", err)
 	}
+	// 65-11: backfill the IPv4-only switch, off, on an old deployment.
+	if err := ensureOutboundEnv(o.EnvPath, o.ConfigPath, o.Out); err != nil {
+		return fmt.Errorf("ensure CHALK_OUTBOUND_IPV4_ONLY: %w", err)
+	}
 
 	oldDigest := st.CurrentDigest
 	if err := repinChalkdImage(o.Cfg.Image, newDigest); err != nil {
