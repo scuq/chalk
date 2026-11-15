@@ -308,7 +308,7 @@ export const BLOB_BUDGET_BYTES = 7900;
  * pass a JSON string's length for `n`, which is its byte length too: every
  * field in a packed pin is ASCII (UUID, base64, digits).
  */
-function sealedLength(n: number): number {
+export function sealedLength(n: number): number {
   return 4 * Math.ceil((12 + n + 16) / 3);
 }
 

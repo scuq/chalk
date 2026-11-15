@@ -489,6 +489,18 @@ subscribe.
   was made with, and the dispatcher lists only rows that match the current
   key. 65-5 must pass the current key to `ListPushSubscriptionsForUsers`.
 
+## Phase 87 — message reminders: IN PROGRESS, 87-1 built
+
+Message reminders bring one message back later. 87-1 is built: the pure rules
+in `web/src/chat/reminders.ts`, with tests. The presets are this evening,
+tomorrow morning, tomorrow evening, weekend, next Monday, and a custom time.
+The whole set of reminders lives in a sealed prefs blob, and the ceiling is 25
+reminders. For a user with web push, the server also holds a wake record for
+each pending reminder, so that a reminder fires when chalk is closed. The
+record holds a due time and a random ID, and no message. Slices 87-2 to 87-9
+are open. Record in
+[phases/PHASE-87-REMINDERS.md](phases/PHASE-87-REMINDERS.md).
+
 ## Phase 93-3 — the resizable thread pane: designed, not started
 
 The thread pane's edge as a drag handle, width stored per device in
@@ -512,10 +524,6 @@ same space.
   shipped quoting, so the document's framing as *the alternative to* quoting is
   out of date. What a tie does that a quote cannot — point at a message too far
   back to reprint — is unchanged, and is the reason it is still on this list.
-- **Message reminders** (87, [phases/PHASE-87-REMINDERS.md](phases/PHASE-87-REMINDERS.md)):
-  bring one message back later — 1h/24h/weekend/custom from the row menu, a
-  badged Reminders entry above the parking lot, the whole set in a sealed prefs
-  blob so the server never learns a reminder exists, and no server code at all.
 - **A local idle agent** (90, [phases/PHASE-90-IDLEEXT.md](phases/PHASE-90-IDLEEXT.md)).
 - **Large rooms** (98, [phases/PHASE-98-BIGROOMS.md](phases/PHASE-98-BIGROOMS.md)):
   per-sender streams for rooms past the 64 cap — **stale since the
