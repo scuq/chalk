@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.12.3 — 15 November 2026 — The reason for a rejected push in the server log
 
 ### Changed
 - When a push service rejects a push notification, the server log now shows the reason that the service gives.
