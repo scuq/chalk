@@ -12,6 +12,7 @@
   },
   "files": [
     { "kind": "folder", "path": "chalk", "target-membership": [ "chalk" ] },
+    { "kind": "folder", "path": "Shared", "target-membership": [ "chalk" ] },
     { "kind": "folder", "path": "chalkTests", "target-membership": [ "chalkTests" ] },
     {
       "kind": "group",

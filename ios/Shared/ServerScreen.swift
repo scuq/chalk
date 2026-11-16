@@ -36,9 +36,14 @@ struct ServerScreen: View {
                             .font(.system(size: 16, design: .monospaced))
                             .foregroundStyle(Palette.accent)
                             .tint(Palette.accent)
+                            #if os(iOS)
                             .textContentType(.URL)
                             .keyboardType(.URL)
                             .textInputAutocapitalization(.never)
+                            #else
+                            // 138-1: without this, macOS draws its own field border inside the frame below.
+                            .textFieldStyle(.plain)
+                            #endif
                             .autocorrectionDisabled()
                             .submitLabel(.go)
                             .focused($focused)
@@ -76,10 +81,16 @@ struct ServerScreen: View {
                 .padding(24)
                 .background(Palette.card)
                 .overlay(Rectangle().stroke(Palette.accent, lineWidth: 1))
+                #if os(macOS)
+                // 138-1: a desktop window is wide, so the card keeps a phone width.
+                .frame(maxWidth: 420)
+                #endif
                 .padding(16)
                 .padding(.top, 48)
             }
+            #if os(iOS)
             .scrollDismissesKeyboard(.interactively)
+            #endif
         }
         .preferredColorScheme(.dark)
         .onAppear {

@@ -87,6 +87,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #video          121       web/src/attachments/types.ts web/src/attachments/preview.ts web/src/attachments/tiles.ts web/src/attachments/pipeline.ts web/src/components/AttachmentView.tsx web/src/components/Lightbox.tsx web/src/components/Composer.tsx web/src/theme.css docs/phases/PHASE-121-VIDEO.md
 #selfupdate     105       desktop/src/selfupdate/ tools/make-release-key.sh .github/workflows/release.yml docs/phases/PHASE-105-SELFUPDATE.md
 #ios            136       ios/ internal/apns/ internal/server/push_ws.go internal/server/push_dispatch.go internal/server/reminder_push.go internal/server/push_apns_test.go internal/store/push.go internal/proto/push.go migrations/0066_push_subscription_kind.sql cmd/chalkd/main.go internal/webpush/send.go internal/config/push.go internal/chalkctl/apns.go internal/chalkctl/render.go internal/chalkctl/restore.go internal/chalkctl/init.go internal/chalkctl/templates/chalk.env.tmpl cmd/chalkctl/main.go web/icons/gen-png.mjs web/src/ios-shell.ts web/src/notify/ios-push.ts web/src/notify/ios-push.test.ts web/src/notify/push.ts web/src/components/PushSettings.tsx web/src/components/App.tsx web/src/proto.ts ios/chalk/PhoneCallTracker.swift ios/chalk/PushCrypto.swift ios/chalk/PushContent.swift .github/workflows/ci.yml docs/phases/PHASE-136-IOS.md
+#macos          138       ios/chalkMac/ ios/Shared/ docs/phases/PHASE-138-MACOS.md
 
 ## Phase docs
 

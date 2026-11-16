@@ -123,12 +123,6 @@ final class PushBridge: NSObject, WKScriptMessageHandlerWithReply {
     }
 }
 
-/// Returns the origin of a frame as scheme, lowercase host, and port. The port is left out if it is 0.
-func originString(_ origin: WKSecurityOrigin) -> String {
-    let port = origin.port == 0 ? "" : ":\(origin.port)"
-    return "\(origin.protocol)://\(origin.host.lowercased())\(port)"
-}
-
 /// The application delegate. It receives the device token and handles notification taps.
 final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(

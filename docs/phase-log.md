@@ -96,7 +96,7 @@ as-built rather than a contemporaneous plan.
 | 102 | sound themes — cues as files replace the synthesizer, which returns as a rendered theme; arcade becomes the default | [PHASE-102-SOUNDTHEMES.md](phases/PHASE-102-SOUNDTHEMES.md) |
 | 103 | camera off: negotiated even when off, released when off | [PHASE-103-CAMERAOFF.md](phases/PHASE-103-CAMERAOFF.md) |
 | 104 | desktop app — an Electron shell around the server's page | [PHASE-104-DESKTOP.md](phases/PHASE-104-DESKTOP.md) |
-| 105 | desktop self-update | [PHASE-105-SELFUPDATE.md](phases/PHASE-105-SELFUPDATE.md) *(built; awaiting the release key and a real update per platform)* |
+| 105 | desktop self-update | [PHASE-105-SELFUPDATE.md](phases/PHASE-105-SELFUPDATE.md) *(built, the release key exists and is pinned, the first signed release is the next tag, and no real update ran yet)* |
 | 106 | channel names — distinct group headers, rename, short names | [PHASE-106-CHANNELNAMES.md](phases/PHASE-106-CHANNELNAMES.md) *(v0.8.6; part of the live checklist still open)* |
 | 107 | quoting a message | [PHASE-107-QUOTE.md](phases/PHASE-107-QUOTE.md) *(merged from PR #9, whose commits say 99)* |
 | 108 | the image cross-compiles — no QEMU in the release build | [PHASE-108-CROSSBUILD.md](phases/PHASE-108-CROSSBUILD.md) |
@@ -129,6 +129,7 @@ as-built rather than a contemporaneous plan.
 | 135 | phone — the chat list is the phone layout, with a call bar and view, back-gesture layers, and a row sheet *(device checklist open)* | [PHASE-135-PHONE.md](phases/PHASE-135-PHONE.md) |
 | 136 | ios: a wrapper app keeps a call running in the background *(in progress, 136-1, 136-2, 136-3, 136-4a, 136-4b, 136-4c, 136-5a, and 136-4d parts 1 and 2 built; device checklist open)* | [PHASE-136-IOS.md](phases/PHASE-136-IOS.md) |
 | 137 | phone polish — a full-width composer, grouped messages, taller rows, one-row headers, a slide between the list and a chat, friend chips in up to two lines beside a count button, and a filter bar with kind chips, and icon buttons in the list head for the parking lot, threads, filter, add a friend, and new channel, and the status dot in place of the "@" on a direct conversation *(device checklist open)* | [PHASE-137-POLISH.md](phases/PHASE-137-POLISH.md) |
+| 138 | macos: a native Swift app to replace the Electron build on macOS *(in progress, 138-1 written and not compiled, measurement open)* | [PHASE-138-MACOS.md](phases/PHASE-138-MACOS.md) |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.

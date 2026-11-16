@@ -24,6 +24,12 @@ final class AppModel {
         message = nil
     }
 
+    // 138-1: the macOS app menu calls this. The iOS app uses the Settings toggle.
+    func chooseServer() {
+        server = nil
+        message = nil
+    }
+
     func connect(_ input: String) {
         guard let url = ServerAddress.normalize(input) else {
             message = "That is not a server address chalk can open. Use https://host."
