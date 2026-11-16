@@ -415,6 +415,7 @@ The user must trust it, in the same way as the desktop app.
   A MITM that serves the SPA bundle itself is endpoint compromise.
   The shell does not change this.
 - The shell grants camera and microphone only to the server origin.
+  The shell answers the push bridge (`chalkPush`) only for the main frame of that origin.
   The origin must be https and must have the same host and port as the server URL.
   The shell denies all other requests.
 - The server pin, the session cookie, and all crypto stay in the page.
@@ -424,7 +425,11 @@ The shell has no web push, so phase 136 adds a native push sender in chalkd.
 The sender uses the Apple Push Notification service (APNs), and it adds a second third party after web push.
 See "Third parties: APNs (phase 136)".
 chalkd can send to Apple since 136-4b.
-No client registers a device yet, so no push goes out until 136-4d.
+Since 136-4d part 2, the page in the server origin can ask the app for a push registration.
+The registration is the device token and a public key.
+The private key stays in the Keychain of the device.
+The token and the public key travel only on the sealed WebSocket, as before.
+The notification extension is not built, so the app cannot yet decrypt a push.
 Passkeys possibly do not work in the web view, because associated domains are compiled into the app.
 Password with TOTP is not affected.
 This is unmeasured.
@@ -578,8 +583,9 @@ The app sends its registration to chalkd only over the sealed WebSocket (phase 8
 A network attacker therefore cannot swap the device token or the key of the app.
 
 Slice 136-4b built the server side.
-The registration from the app is not built, because it waits for 136-4d.
-The text below states what the design does once both parts exist.
+Slice 136-4d part 2 built the registration from the app.
+The extension that decrypts is not built, because it needs the paid account.
+The text below states what the design does once all parts exist.
 
 ### What Apple learns from each push
 

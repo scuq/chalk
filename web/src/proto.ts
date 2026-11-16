@@ -654,10 +654,19 @@ export const TypePushSubscribeAck = "push_subscribe_ack";
 export const TypePushUnsubscribe = "push_unsubscribe";
 export const TypePushUnsubscribeAck = "push_unsubscribe_ack";
 
+// ---- Phase 136-4b: native push for the iOS app (internal/proto/push.go) ----
+// push_subscribe_apns is answered with a PushStatePayload under its ack type.
+// Like web push, it works only on a sealed connection.
+// push_unsubscribe removes the row of this session.
+export const TypePushSubscribeAPNs = "push_subscribe_apns";
+export const TypePushSubscribeAPNsAck = "push_subscribe_apns_ack";
+
 export const ErrCodePushDisabled = "push_disabled";
 export const ErrCodePushUnsealed = "push_unsealed";
 export const ErrCodePushNoSession = "push_no_session";
 export const ErrCodePushKeyStale = "push_key_stale";
+// The topic or the environment of the request is not the one that chalkd sends to.
+export const ErrCodePushAPNsMismatch = "push_apns_mismatch";
 
 // ---- Phase 87-7: reminder wakes (internal/proto/reminder.go) ----------
 // Only on a sealed connection. Errors use the push error codes.
@@ -700,6 +709,22 @@ export interface PushStatePayload {
   scope?: "dms" | "all";
   /** False when the browser subscribed with an older key. Subscribe again. */
   key_current: boolean;
+  /** The bundle identifier that chalkd sends APNs push to. It is absent if the server has no APNs. */
+  apns_topic?: string;
+  /** "production" or "sandbox": the APNs environment of chalkd. */
+  apns_environment?: string;
+  /** The kind of the row of this session. It is absent without a row. */
+  kind?: "webpush" | "apns";
+}
+
+/** An APNs registration of the iOS app. The token is hex. p256dh and auth are base64url. */
+export interface PushSubscribeAPNsPayload {
+  token: string;
+  p256dh: string;
+  auth: string;
+  scope: "dms" | "all";
+  topic: string;
+  environment: string;
 }
 
 // typing is fire-and-forget: no ack, nothing persisted. Re-send it every few

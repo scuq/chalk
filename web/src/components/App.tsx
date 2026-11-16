@@ -36,6 +36,7 @@ import {
   onPushSubscribed,
   reconcilePush,
 } from "../notify/push";
+import { installIOSOpenListener, reconcileNativePush } from "../notify/ios-push";
 import { wakeKey, wakeSet } from "../chat/reminder-wake"; // 87-7
 import { parseOpenURL } from "../sw-logic";
 import { titleController } from "../notify/title";
@@ -2685,7 +2686,13 @@ export function App() {
   useEffect(() => {
     notifyBanners().setNavigateHandler(openFromNotification);
     // 65-7: a click on a push notification, with chalk open, goes to the same place.
-    return installPushOpenListener(openFromNotification);
+    const offWeb = installPushOpenListener(openFromNotification);
+    // 136-4d: a tap on a notification of the iOS app goes to the same place.
+    const offIOS = installIOSOpenListener(openFromNotification);
+    return () => {
+      offWeb();
+      offIOS();
+    };
   }, []);
 
   // --- WS lifecycle ----------------------------------------------------
@@ -2728,6 +2735,8 @@ export function App() {
         // 65-7: after every connect, make the push subscription and the
         // server row agree.
         void reconcilePush(client);
+        // 136-4d: the same for the iOS app, which has an APNs row and not a web push row.
+        void reconcileNativePush(client);
       },
       onFrame: (f: Frame) => handleFrame(f),
       onServerPinWall: (info) => setServerPinWall(info), // 83-6

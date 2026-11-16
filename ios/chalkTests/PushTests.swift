@@ -148,3 +148,77 @@ struct PushContentTests {
         #expect(PushContent.fallback.body == "New notification")
     }
 }
+
+// A SecretStore in memory. refuse makes save fail, and saves counts the saved items.
+private final class MemoryStore: SecretStore {
+    var data: Data?
+    var saves = 0
+    var refuse = false
+    func load() -> Data? { data }
+    func save(_ d: Data) -> Bool {
+        if refuse { return false }
+        data = d
+        saves += 1
+        return true
+    }
+}
+
+// 136-4d: tests of the keys, the reply format, and the tap targets of the push bridge.
+@MainActor
+struct PushBridgeTests {
+    // The keys are made once, kept, made again if the item is damaged, and an error shows if the save fails.
+    @Test func keysAreMadeOnceAndKept() throws {
+        let store = MemoryStore()
+        let a = try PushKeys.loadOrCreate(store)
+        let b = try PushKeys.loadOrCreate(store)
+        #expect(store.saves == 1)
+        #expect(a.privateKey.rawRepresentation == b.privateKey.rawRepresentation)
+        #expect(a.auth == b.auth && a.auth.count == 16)
+        store.data = Data([1, 2, 3])
+        let c = try PushKeys.loadOrCreate(store)
+        #expect(store.saves == 2)
+        #expect(c.privateKey.rawRepresentation != a.privateKey.rawRepresentation)
+        let refusing = MemoryStore()
+        refusing.refuse = true
+        #expect(throws: PushKeys.Failure.self) { try PushKeys.loadOrCreate(refusing) }
+    }
+
+    // Runs on the simulator Keychain, with a service name that is unique for each run.
+    @Test func keychainRoundTrip() throws {
+        let store = KeychainStore(service: "at.73c.chalk.test." + UUID().uuidString, account: "k")
+        defer { store.delete() }
+        #expect(store.load() == nil)
+        let keys = try PushKeys.loadOrCreate(store)
+        let again = try PushKeys.loadOrCreate(store)
+        #expect(keys.privateKey.rawRepresentation == again.privateKey.rawRepresentation)
+    }
+
+    // The format is the one that parseNativeReply in web/src/notify/ios-push.ts accepts.
+    @Test func replyHasThePageFormat() throws {
+        let keys = try PushKeys.loadOrCreate(MemoryStore())
+        let r = PushReply.success(token: Data([0x00, 0xfc, 0x13]), keys: keys, topic: "at.73c.chalk", environment: "sandbox")
+        #expect(r["ok"] as? Bool == true)
+        #expect(r["token"] as? String == "00fc13")
+        let p256dh = try #require(r["p256dh"] as? String)
+        let auth = try #require(r["auth"] as? String)
+        #expect(p256dh.count == 87 && auth.count == 22)
+        #expect(!p256dh.contains("=") && !p256dh.contains("+") && !p256dh.contains("/"))
+        #expect(r["topic"] as? String == "at.73c.chalk" && r["environment"] as? String == "sandbox")
+        let f = PushReply.failure("denied")
+        #expect(f["ok"] as? Bool == false && f["error"] as? String == "denied")
+        #expect(PushReply.environment == "sandbox")
+    }
+
+    // A target from userInfo is the target of the page, and junk that is not a UUID is refused.
+    @Test func tapTargetsRoundTripAndRefuseJunk() {
+        let ch = "11111111-1111-1111-1111-111111111111"
+        let th = "33333333-3333-3333-3333-333333333333"
+        let content = PushContent(title: "t", body: "b", threadID: "x", badge: nil, channelID: ch, threadMessageID: th)
+        #expect(PushOpen.target(from: PushOpen.userInfo(for: content)) == ["channelID": ch, "threadID": th])
+        #expect(PushOpen.target(from: ["chalk_reminder": th]) == ["reminderID": th])
+        #expect(PushOpen.target(from: ["chalk_channel": "javascript:x"]) == nil)
+        #expect(PushOpen.target(from: ["chalk_thread": th]) == nil)
+        #expect(PushOpen.target(from: [:]) == nil)
+        #expect(PushOpen.userInfo(for: .fallback).isEmpty)
+    }
+}

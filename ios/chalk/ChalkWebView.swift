@@ -23,8 +23,13 @@ struct ChalkWebView: UIViewRepresentable {
             source: ShellMark.script(version: version),
             injectionTime: .atDocumentStart,
             forMainFrameOnly: true))
+        // 136-4d: the push bridge, for the main frame of the server origin only.
+        config.userContentController.addScriptMessageHandler(
+            PushBridge(serverOrigin: context.coordinator.serverOrigin), contentWorld: .page, name: PushBridge.name)
         let view = WKWebView(frame: .zero, configuration: config)
         context.coordinator.configure(view)
+        // 136-4d: a notification tap goes to this web view.
+        PushOpenRouter.shared.attach(view)
         view.load(URLRequest(url: server))
         return view
     }
@@ -113,6 +118,11 @@ struct ChalkWebView: UIViewRepresentable {
             return navigationResponse.canShowMIMEType ? .allow : .download
         }
 
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            // 136-4d: the page can take a tap target now. A child window does not count.
+            if !isChild { PushOpenRouter.shared.pageLoaded() }
+        }
+
         func webView(
             _ webView: WKWebView,
             didFailProvisionalNavigation navigation: WKNavigation!,
@@ -181,9 +191,7 @@ struct ChalkWebView: UIViewRepresentable {
             type: WKMediaCaptureType,
             decisionHandler: @escaping (WKPermissionDecision) -> Void
         ) {
-            let port = origin.port == 0 ? "" : ":\(origin.port)"
-            let requester = "\(origin.protocol)://\(origin.host.lowercased())\(port)"
-            let same = origin.protocol == "https" && requester == serverOrigin
+            let same = origin.protocol == "https" && originString(origin) == serverOrigin
             decisionHandler(same ? .grant : .deny)
         }
 

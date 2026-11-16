@@ -4,12 +4,12 @@ A plan for a small iPhone app that wraps the chalk web page.
 The goal is that a voice call continues when the user switches apps or locks the screen.
 The design was written on 14 November 2026.
 
-**Status: in progress.** Slice 136-1 is built and measured on a device (2026-11-16). The gate passed. Slice 136-2 is built and checked on a device (2026-11-16), with two checks open. A follow-up of 136-2 has a device check open. Slice 136-4 is split into four parts: 136-4a, 136-4b, and 136-4c are built (2026-11-16), and the part 136-4d is built in part 1 only. Slice 136-3 is built and checked on a device (2026-11-16), with two details open. Slice 136-5a is built (2026-11-16). Slices 136-5b, 136-5c, and 136-6 are not started.
+**Status: in progress.** Slice 136-1 is built and measured on a device (2026-11-16). The gate passed. Slice 136-2 is built and checked on a device (2026-11-16), with two checks open. A follow-up of 136-2 has a device check open. Slice 136-4 is split into four parts: 136-4a, 136-4b, and 136-4c are built (2026-11-16), and the part 136-4d is built in parts 1 and 2. Slice 136-3 is built and checked on a device (2026-11-16), with two details open. Slice 136-5a is built (2026-11-16). Slices 136-5b, 136-5c, and 136-6 are not started.
 **Tag:** `#ios` → `tools/where.sh -g ios` (this file and the `ios/` directory).
 
 Decisions from the owner:
 
-- The owner has a Mac. The owner will buy a paid Apple Developer account, and it is not active yet (decision of 16 November 2026). Slices 136-4a to 136-4c, part 1 of 136-4d, and 136-5a need no account. The rest of 136-4d, 136-5b, and 136-5c need it.
+- The owner has a Mac. The owner will buy a paid Apple Developer account, and it is not active yet (decision of 16 November 2026). Slices 136-4a to 136-4c, parts 1 and 2 of 136-4d, and 136-5a need no account. The rest of 136-4d, 136-5b, and 136-5c need it.
 - The app is for the owner and the users of the owner's server. It is not a public App Store listing.
 - Push in the shell: chalkd gets a native APNs sender, and Apple sees only ciphertext (decision of 16 November 2026). See 136-4.
 - Distribution: TestFlight with a public link for the users of the owner's server (decision of 16 November 2026). See 136-5.
@@ -89,11 +89,11 @@ Slices 136-1, 136-2, and 136-3 are built, and 136-4a, 136-4b, and 136-4c are bui
 | 136-1 | Device test, the gate for the phase. See below. | done, 2026-11-16 |
 | 136-2 | The shell: server address screen, navigation rule, permission grant, safe areas, file download, app icon. | built, 2026-11-16. Open: the Settings toggle and the print window. See below. |
 | 136-3 | The web client knows the shell, and mutes on a phone call. See below. | built and checked on a device, 2026-11-16. Checks (d) and (e) open. |
-| 136-4 | Notifications in the shell: an APNs sender in chalkd. Four parts. See below. | 136-4a, 136-4b, and 136-4c built, 2026-11-16. 136-4d part 1 built, 2026-11-16. The rest of 136-4d needs the account. |
+| 136-4 | Notifications in the shell: an APNs sender in chalkd. Four parts. See below. | 136-4a, 136-4b, and 136-4c built, 2026-11-16. 136-4d parts 1 and 2 built, 2026-11-16. The rest of 136-4d needs the account. |
 | 136-4a | APNs sender package, provider token, config parsing. No account needed. | built, 2026-11-16 |
 | 136-4b | Device rows, a sealed WebSocket frame, fan-out from the dispatcher, chalkd builds the sender. No account needed. | built, 2026-11-16 |
 | 136-4c | chalkctl support for the key, and the `docs/deployment.md` env table. No account needed. | built, 2026-11-16 |
-| 136-4d | Shell registration, the bridge, the extension, the tap, a device test. Part 1 needs no account. The rest needs the paid account. | part 1 built, 2026-11-16. The rest not started. |
+| 136-4d | Shell registration, the bridge, the extension, the tap, a device test. Part 1 needs no account. Parts 1 and 2 need no account. The rest needs the paid account. | parts 1 and 2 built, 2026-11-16. The rest not started. |
 | 136-5 | Distribution through TestFlight. Three parts. See below. | 136-5a built, 2026-11-16. 136-5b and 136-5c not started. |
 | 136-5a | Release preparation: Web Inspector in Debug only, deployment target 17.0, ignore rules, a CI job for the Swift tests, export compliance facts. No account needed. | built, 2026-11-16 |
 | 136-5b | The first upload to App Store Connect from the Mac of the owner. Needs the paid account. | not started |
@@ -467,7 +467,7 @@ Another chalk server that a user enters on the server screen gets no native push
 | 136-4a | APNs sender package, provider token, config parsing. | no | built, 2026-11-16 |
 | 136-4b | Device rows (a migration). A sealed WebSocket frame that carries the device token, the public key, and the authentication secret. Fan-out to both senders from the dispatcher, reminders included. chalkd builds the sender at start. | no | built, 2026-11-16 |
 | 136-4c | chalkctl: set the key that the operator supplies, keep it on `--force`, backfill it on `update`, and carry it on restore. The env table in `docs/deployment.md`. | no | built, 2026-11-16 |
-| 136-4d | Shell: registration for remote notifications, and a bridge that hands the token and the key to the page. The extension that decrypts. A tap that opens the channel. A device test. It needs the Push capability, an app group, and an extension target. | part 1 no, the rest yes | part 1 built, 2026-11-16. The rest not started. |
+| 136-4d | Shell: registration for remote notifications, and a bridge that hands the token and the key to the page. The extension that decrypts. A tap that opens the channel. A device test. The bridge and the page (part 2) need no account. The Push capability, an app group, and an extension target need it. | parts 1 and 2 no, the rest yes | parts 1 and 2 built, 2026-11-16. The rest not started. |
 
 The env table in `docs/deployment.md` lists the variables since 136-4c.
 
@@ -660,8 +660,8 @@ Tests:
 
 - chalkctl did not know `CHALK_APNS_*` in 136-4b.
   136-4c closed this (see "Result of 136-4c").
-- The page and the app do not send `push_subscribe_apns` yet (136-4d, which needs the paid account).
-  No user can get a native push yet.
+- The page and the app did not send `push_subscribe_apns` in 136-4b.
+  136-4d part 2 added the sender, but no user gets a native push before the extension exists (see "Result of 136-4d, part 2").
 - Nothing was sent to the real APNs, and no chalkd ran with APNs settings.
 - Verification: `go test ./...` passes.
   The store tests pass with `CHALK_TEST_PGURL` set to the dev Postgres, in a scratch database with all migrations.
@@ -762,6 +762,101 @@ Not done in part 1, because it needs the paid account:
 - The bridge from the shell to the page.
 - The page that sends `push_subscribe_apns`.
 - The open on a tap.
+
+#### Result of 136-4d, part 2
+
+Part 2 is the bridge between the shell and the page.
+It needs no account.
+Without the Push capability, iOS refuses the registration, and the app answers "unavailable".
+A server without `CHALK_APNS_*` still shows "push notifications in the app are not available yet.", as before.
+
+The message format:
+
+- The app adds a WebKit reply handler named `chalkPush` in the page content world.
+  The page posts `{op: "register", prompt}`.
+  If `prompt` is true, the app shows the iOS permission prompt, but only when the user has not decided yet.
+- The reply is `{ok: true, token, p256dh, auth, topic, environment}` or `{ok: false, error: "denied" | "unavailable"}`.
+  The token is lowercase hex.
+  `p256dh` is the 65-byte public key and `auth` is the 16-byte secret, both in unpadded base64url.
+  `topic` is the bundle identifier.
+- `parseNativeReply` in `web/src/notify/ios-push.ts` checks the reply.
+  The token must be hex of 200 characters or fewer.
+  The key must be 65 bytes, the secret 16 bytes, and the topic not empty.
+  The environment must be `production` or `sandbox`.
+  Any other reply counts as "unavailable".
+- `ios/chalk/PushRegistrar.swift` waits up to 15 seconds for the device token.
+  A timeout gives "unavailable".
+
+The page:
+
+- `web/src/proto.ts` has the types of `push_subscribe_apns` and its ack, the error code `push_apns_mismatch`, and the fields `apns_topic`, `apns_environment`, and `kind` of `PushStatePayload`.
+- `enableNativePush` asks the app with `prompt` true and then reads `push_state`.
+  If the server offers no APNs, it fails with `push_disabled`.
+  Otherwise it sends `push_subscribe_apns` and calls the `onPushSubscribed` listeners, which resend the reminder wake set (87-7).
+  Its errors are `push_native_denied` and `push_native_unavailable`.
+- In the app, `pushAvailability` returns "ios-app" until `push_state` has `apns_topic` and the bridge exists.
+  Then it returns "ready", or "unsealed" without a sealed connection.
+  `PushSettings` reads `push_state` also while the value is "ios-app".
+  The switch and the scope select use `enableNativePush`.
+  The switch off uses `disablePush`, which sends `push_unsubscribe`.
+- `reconcileNativePush` runs after each welcome, beside `reconcilePush`.
+  It acts only if this session has an APNs row, and it asks the app without a prompt.
+  If the token changed or `key_current` is false, it uploads again, because Apple can change the token of a device.
+  If the user turned notifications off in the iOS Settings app, it sends `push_unsubscribe`.
+  If the app is "unavailable", it does nothing.
+- The new error texts are `push_native_denied`, `push_native_unavailable`, and `push_apns_mismatch`.
+
+The tap path:
+
+- The notification extension is not built yet.
+  It must write the keys `chalk_channel`, `chalk_thread`, and `chalk_reminder` into the `userInfo` of the notification.
+  `PushOpen.target` reads them, and only UUIDs pass.
+- `AppDelegate` sets the notification center delegate at launch, so that a tap that starts the app arrives.
+  It shows no banner while the app is in front, because the page shows its own banners.
+- `PushOpenRouter` keeps the target until the page has loaded.
+  It then dispatches the `chalk-ios-open` event with `callAsyncJavaScript` and arguments, so the target is never part of the script text.
+- `installIOSOpenListener` checks the event again with `openTargetFromIOS`, and `App.tsx` sends the target to `openFromNotification`, like a click on a web push.
+
+The keys and their storage:
+
+- `PushKeys.loadOrCreate` makes the P-256 key and the 16-byte secret once, with `SecRandomCopyBytes`, and keeps them.
+  If the stored item is damaged, it makes new keys.
+- The Keychain item is a generic password with the service `at.73c.chalk.push`.
+  Its access is `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, because the extension must read it while the phone is locked after the first unlock.
+  The item has no access group yet.
+  The group comes with the extension and the app group, which need the account.
+- The private key does not leave the Keychain.
+  The page gets only the public key and the secret.
+
+The environment depends on the build configuration.
+A Debug build reports `sandbox`, and a Release build reports `production`.
+Builds that run from Xcode use the APNs sandbox.
+TestFlight and App Store builds use production.
+chalkd answers a wrong value with `push_apns_mismatch`.
+
+The origin check:
+
+- `PushBridge` answers only the main frame of the server origin.
+  It refuses any other frame with the error "refused".
+- `originString` builds the origin.
+  The media permission check uses it too.
+
+Tests:
+
+- `web/src/notify/ios-push.test.ts` has 5 tests, and `web/src/notify/push.test.ts` has a new test for the availability in the app.
+  The web suite passes: 2051 of 2051.
+- `PushBridgeTests` in `ios/chalkTests/PushTests.swift` has 4 tests.
+  They cover keys made once, kept, and made again when damaged, the Keychain round trip on the simulator, the reply format, and the tap targets.
+  The Swift tests pass: 27 of 27.
+  The Release build compiles.
+
+Not done, because it needs the paid account:
+
+- The Push Notifications capability (the `aps-environment` entitlement).
+- The Notification Service Extension target.
+  It decrypts with `PushCrypto`, words the text with `PushContent`, and writes the `userInfo` keys.
+- The app group, and the Keychain access group that the app shares with the extension.
+- The device test.
 
 ### 136-5 distribution
 

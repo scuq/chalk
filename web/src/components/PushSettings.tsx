@@ -3,10 +3,12 @@
 // is direct messages or all messages. It reads the state of this session over
 // the sealed WebSocket. It renders nothing when the server has push off.
 // Each change goes through enablePush or disablePush in notify/push.ts.
+// Inside the iOS app, 136-4d, the switch and the select use enableNativePush from notify/ios-push.ts.
 
 import { useEffect, useState } from "preact/hooks";
 import { TypePushState, type PushStatePayload } from "../proto";
 import { iosShellPresent } from "../ios-shell";
+import { enableNativePush, nativePushBridge } from "../notify/ios-push";
 import {
   disablePush,
   enablePush,
@@ -57,11 +59,15 @@ export function PushSettings({ serverEnabled, client, sealed }: Props) {
     appleMobile: isAppleMobile(navigator.userAgent, navigator.platform, navigator.maxTouchPoints ?? 0),
     standalone: standalone(),
     iosShell: iosShellPresent(),
+    nativePush: nativePushBridge() !== null && !!state?.apns_topic,
     permission: perm,
   });
+  // native is true inside the iOS app when the app gives the page its push bridge.
+  const native = iosShellPresent() && nativePushBridge() !== null;
 
   useEffect(() => {
-    if (avail !== "ready" && avail !== "denied") return;
+    // In the app, state is also necessary while avail is "ios-app": apns_topic shows if the server offers APNs.
+    if (avail !== "ready" && avail !== "denied" && !(avail === "ios-app" && native)) return;
     const c = client();
     if (!c) return;
     let live = true;
@@ -101,12 +107,14 @@ export function PushSettings({ serverEnabled, client, sealed }: Props) {
 
   const toggle = (want: boolean) => {
     // enablePush asks for permission, so it must run inside this click handler.
-    void run((c) => (want ? enablePush(c, scope) : disablePush(c)));
+    // Turning push off is the same call in the app: push_unsubscribe.
+    const enable = native ? enableNativePush : enablePush;
+    void run((c) => (want ? enable(c, scope) : disablePush(c)));
   };
 
   const changeScope = (next: PushScope) => {
     setScope(next);
-    if (on) void run((c) => enablePush(c, next));
+    if (on) void run((c) => (native ? enableNativePush(c, next) : enablePush(c, next)));
   };
 
   return (

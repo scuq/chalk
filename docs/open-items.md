@@ -605,12 +605,14 @@ same space.
   target of 17.0 (not measured on iOS 17 to 27.1), ignore rules for signing files,
   and a manual `ios` CI job for the Swift tests. Slice 136-4d part 1 is built
   (2026-11-16): the receiver side of the push crypto and the payload text, with
-  tests. Open: the steps that need the paid Apple Developer account, which the owner
-  will buy and which is not active yet (136-5b the first upload, the rest of 136-4d,
+  tests. Part 2 is built (2026-11-16): the bridge between the app and the page, the
+  device keys, the tap path, and the push settings in the app, with tests. Open: the steps that need the paid Apple Developer account, which the owner
+  will buy and which is not active yet (136-5b the first upload, the rest of 136-4d
+  (the Push capability, the notification extension, the app group, and the device test),
   and 136-5c the GitHub release job), the export compliance decision (the facts are
   in the phase doc), the Beta App Review sign-in decision (the reviewer needs a TOTP
   code), and the device checks. Installs that last
-  longer than 7 days need it too. Until 136-4d, no push goes to Apple. In the Home
+  longer than 7 days need it too. Until the extension exists, a native push shows only the constant alert text of chalkd. In the Home
   Screen web app the call still pauses in the background, and the call view
   says so. In the app the call continues, and the view does not say so.
 - **The SFU seam** (voice design Slice I) for rooms too large for a mesh.

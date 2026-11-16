@@ -110,6 +110,7 @@ const env = (over: Partial<PushEnv> = {}): PushEnv => ({
   appleMobile: false,
   standalone: false,
   iosShell: false,
+  nativePush: false,
   permission: "default",
   ...over,
 });
@@ -144,4 +145,12 @@ test("inside the iOS app, push settings say so instead of the Home Screen hint",
   assert.equal(pushAvailability(env(app)), "ios-app");
   assert.equal(pushAvailability(env({ ...app, serverEnabled: false })), "server-off");
   assert.equal(pushAvailability(env({ ...app, iosShell: false })), "ios-home-screen");
+});
+
+test("inside the iOS app, the toggle shows once the server offers native push", () => {
+  const app = { appleMobile: true, supported: false, iosShell: true };
+  assert.equal(pushAvailability(env({ ...app, nativePush: true })), "ready");
+  assert.equal(pushAvailability(env({ ...app, nativePush: true, sealed: false })), "unsealed");
+  assert.equal(pushAvailability(env({ ...app, nativePush: true, serverEnabled: false })), "server-off");
+  assert.equal(pushAvailability(env({ ...app, nativePush: false })), "ios-app");
 });

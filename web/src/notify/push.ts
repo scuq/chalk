@@ -159,6 +159,8 @@ export interface PushEnv {
   appleMobile: boolean;
   standalone: boolean;
   iosShell: boolean;
+  /** True inside the iOS app when the chalkPush bridge exists and push_state reports apns_topic (136-4d). */
+  nativePush: boolean;
   permission: NotificationPermission | null;
 }
 
@@ -167,17 +169,23 @@ export interface PushEnv {
  * the conditions in this order and returns the first that holds:
  *
  *   - "server-off": the server has push off.
- *   - "ios-app": the page runs inside the iOS app, which has no web push.
+ *   - "ios-app": the page runs inside the iOS app, and the server offers no APNs
+ *     or the app has no push bridge (136-4d). The app has no web push.
  *   - "ios-home-screen": an iPhone or iPad runs chalk outside the Home Screen app.
  *   - "unsupported": the browser has no push support.
  *   - "unsealed": the connection is not sealed.
  *   - "denied": the user blocked notifications.
  *
+ * Inside the app, when the server offers APNs and the bridge exists (nativePush),
+ * it returns "unsealed" or "ready" and does not check the browser conditions.
  * If none of these holds, it returns "ready".
  */
 export function pushAvailability(e: PushEnv): PushAvailability {
   if (!e.serverEnabled) return "server-off";
-  if (e.iosShell) return "ios-app";
+  if (e.iosShell) {
+    if (!e.nativePush) return "ios-app";
+    return e.sealed ? "ready" : "unsealed";
+  }
   if (e.appleMobile && !e.standalone) return "ios-home-screen";
   if (!e.supported) return "unsupported";
   if (!e.sealed) return "unsealed";
@@ -206,6 +214,13 @@ export function pushErrorText(err: unknown): string {
       return "your session ended. sign in again.";
     case "push_key_stale":
       return "the server changed its push key. try again.";
+    // 136-4d: errors of enableNativePush and of the push_subscribe_apns request.
+    case "push_native_denied":
+      return "notifications are off for chalk in the iOS Settings app.";
+    case "push_native_unavailable":
+      return "this build of the app cannot receive push.";
+    case "push_apns_mismatch":
+      return "this server sends push to another build of the app.";
     default:
       return `push failed: ${msg}`;
   }
@@ -244,8 +259,13 @@ async function upload(client: PushClient, sub: PushSubscription, scope: PushScop
   const payload = subscribePayload(sub.toJSON(), scope, key);
   if (!payload) throw new Error("push subscription has no keys");
   const state = await client.request<PushSubscribePayload, PushStatePayload>(TypePushSubscribe, payload);
-  for (const fn of subscribedListeners) fn();
+  notifyPushSubscribed();
   return state;
+}
+
+/** notifyPushSubscribed calls the onPushSubscribed listeners. Web push and native push call it after a subscribe. */
+export function notifyPushSubscribed(): void {
+  for (const fn of subscribedListeners) fn();
 }
 
 const subscribedListeners = new Set<() => void>();
