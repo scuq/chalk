@@ -271,10 +271,16 @@ func (o *RestoreOptions) describe(mf Manifest) {
 // Postgres is listening -- without this the next command loses a race it would
 // have won on a retry.
 func waitForPostgres(p *Podman, timeout time.Duration) error {
+	return waitForPostgresIn(p, pgContainer, timeout)
+}
+
+// waitForPostgresIn waits for the Postgres container named container. The
+// review instance (139-2) uses it for postgres-review.
+func waitForPostgresIn(p *Podman, container string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	var last error
 	for time.Now().Before(deadline) {
-		if last = p.ExecIn(strings.NewReader(""), pgContainer,
+		if last = p.ExecIn(strings.NewReader(""), container,
 			"pg_isready", "-U", "chalk", "-d", "chalk"); last == nil {
 			return nil
 		}

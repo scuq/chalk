@@ -120,7 +120,8 @@ func TestCaddyfileTemplateReadsOnlyWhatMaintSupplies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	allowed := map[string]bool{"Domain": true, "Maintenance": true, "MaintenanceMessage": true}
+	allowed := map[string]bool{"Domain": true, "Maintenance": true, "MaintenanceMessage": true,
+		"ReviewDomain": true, "ReviewUp": true}
 	for _, m := range regexp.MustCompile(`\{\{-?\s*(?:if\s+)?\.(\w+)`).FindAllStringSubmatch(string(raw), -1) {
 		if !allowed[m[1]] {
 			t.Errorf("Caddyfile.tmpl reads .%s, which writeCaddyfile does not supply -- "+

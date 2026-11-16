@@ -68,3 +68,27 @@
 	}
 {{- end }}
 }
+{{- if .ReviewDomain }}
+
+# 139-2: the review instance for app review (`chalkctl review`). It has its
+# own chalkd, database, and network. Production maintenance mode does not
+# change this block.
+{{ .ReviewDomain }} {
+	encode zstd gzip
+	log {
+		output stderr
+		format json
+	}
+{{- if .ReviewUp }}
+	reverse_proxy chalkd-review:8443 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+	}
+	handle_errors {
+		respond "the demo server is taking a moment, try again" 503
+	}
+{{- else }}
+	respond "the demo server is off." 503
+{{- end }}
+}
+{{- end }}

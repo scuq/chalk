@@ -10,6 +10,11 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- `chalkctl review` runs a separate demo instance for app review, on its own hostname. A reviewer signs in to it with a username and a password and no TOTP code. You can turn the instance on and off, and production keeps its TOTP step.
+
 ## v0.12.6 — 16 November 2026 — The iOS app badge, and notifications in the background
 
 The changes below are only in the chalk iOS app. They reach the app with a server update. You need no app update.

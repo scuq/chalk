@@ -9,6 +9,10 @@ Requires=chalkd.service
 ContainerName=caddy
 Image=docker.io/library/caddy:{{ .CaddyTag }}
 Network=chalk.network
+{{- if .ReviewDomain }}
+# 139-2: the review instance. Caddy is the only container on both networks.
+Network=chalk-review.network
+{{- end }}
 PublishPort=80:80
 PublishPort=443:443
 Volume=/etc/chalk/caddy/Caddyfile:/etc/caddy/Caddyfile:ro,Z

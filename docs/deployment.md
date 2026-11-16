@@ -319,6 +319,57 @@ CAUTION: Protect the env file as you protect the VAPID private key. A holder
 of the APNs key can send notifications to devices of the app. The holder
 cannot read a push, because every push is ciphertext.
 
+## Review instance for app review (phase 139)
+
+`chalkctl review` runs a second chalk instance on the production host.
+A reviewer from Apple signs in to it with a username and a password and no TOTP code.
+Production is not affected: the TOTP step stays on at every production login.
+
+The review instance has its own hostname, chalkd, database, volumes, env file, and network.
+It runs the image of production chalkd.
+It shares Caddy and coturn with production.
+Review mode needs two gates: `CHALK_REVIEW_MODE=1` in the review env file, and a row in the table `review_instance` of the review database.
+Only `review init` sets both, and only for the review instance.
+See [phases/PHASE-139-REVIEW.md](phases/PHASE-139-REVIEW.md) for the design.
+
+Commands:
+
+    chalkctl review init --domain review.cyberdyne.example   # make the instance (needs root)
+    chalkctl review status                                   # the state, registration, review mode
+    chalkctl review registration closed                      # or `open`, and restart chalkd-review
+    chalkctl review down                                     # stop it, and Caddy shows "the demo server is off."
+    chalkctl review up                                       # start it again
+    chalkctl review remove                                   # delete it and its database
+
+`review init` also takes `--admin-username` (default `demoadmin`) and `--admin-email` (default: the administrator email of production).
+`--no-start` writes the files and starts nothing.
+`remove` asks you to type the domain. `--yes` skips the question.
+`chalkctl push ... --review` acts on the review env file and restarts `chalkd-review`.
+
+Steps:
+
+1. Add a DNS A record for the review hostname that points to the production host.
+2. Run `chalkctl review init --domain` with the review hostname. Caddy restarts once, so production connections drop for a moment.
+3. Open the admin URL that `review init` prints, and create the admin account.
+4. Make the demo accounts through normal signup. Registration is open after `review init`. Signup still enrolls TOTP.
+5. Make the friends, channels, and messages that the reviewer needs.
+6. Run `chalkctl review registration closed`.
+7. Run `chalkctl review down` outside a review, and `chalkctl review up` before the next review.
+8. Run `chalkctl review remove` when you no longer need the instance.
+
+CAUTION: `chalkctl review remove` deletes the review database, the blobs, and the env file.
+You cannot undo it.
+
+Notes:
+
+- A review instance that is down stays down after a reboot.
+- `up` and `down` reload Caddy. They do not restart production.
+- `chalkctl update` repins `chalkd-review` to the new image of production, and restarts it if it is up. If that fails, `update` prints a warning and production stays updated.
+- `chalkctl update` does not backfill new settings into the review env file. Production maintenance mode does not change the review site.
+- Guest links are off in the review instance.
+- Anyone who has the reviewer credentials can use the instance as a chat server, and can get TURN credentials for the shared coturn.
+  Keep registration closed and the instance down outside a review.
+
 ## Outbound IPv4 only (phase 65-11)
 
 chalkd makes outbound HTTP requests for three features: push, link previews,

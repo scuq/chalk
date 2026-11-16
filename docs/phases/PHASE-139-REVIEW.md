@@ -4,7 +4,7 @@ A plan for a separate chalk instance that the Apple reviewer signs in to.
 The instance has its own database and no TOTP step at password login.
 The design was written on 16 November 2026.
 
-**Status: in progress.** Slice 139-1 is built (2026-11-16, not committed). Slices 139-2, 139-3, and 139-4 are not started.
+**Status: in progress.** Slice 139-1 is built and committed. Slice 139-2 is built (2026-11-16, not committed). Slices 139-3 and 139-4 are not started.
 **Tag:** `#review` → `tools/where.sh -g review` (this file, the review-mode code in `internal/auth/`, and the migration).
 
 Decisions from the operator:
@@ -63,11 +63,11 @@ chalkd sets that field once at startup, from two gates.
 Two independent gates decide the review mode.
 
 1. The env gate. `CHALK_REVIEW_MODE` must be set in the process environment of chalkd.
-   - Only `chalkctl review init` (slice 139-2) writes it, and only into `review.env`.
-   - `chalk.env.tmpl`, `chalkd.container.tmpl`, and the backfill list in `update.go` never contain it. A chalkctl test (slice 139-2) asserts this.
+   - Only `chalkctl review init` writes it, and only into `review.env`.
+   - `chalk.env.tmpl`, `chalkd.container.tmpl`, and the backfill list in `update.go` never contain it. A chalkctl test asserts this for the templates.
 2. The database gate. The table `review_instance` must have its one row.
    - Migration 0067 makes the table empty on every database, production included.
-   - No migration and no HTTP endpoint writes the row. Only `chalkctl review init` (slice 139-2) writes it.
+   - No migration and no HTTP endpoint writes the row. Only `chalkctl review init` writes it.
 
 | Env gate | Database gate | Result |
 |---|---|---|
@@ -106,7 +106,7 @@ Isolation between the two instances:
 
 ### 139-1 review mode in chalkd
 
-**Built (2026-11-16, not committed).**
+**Built and committed (2026-11-16).**
 
 - `migrations/0067_review_instance.sql` makes the table `review_instance`. The constraint on `id` keeps it at one row at most.
 - `Store.IsReviewInstance` reports whether the row exists.
@@ -125,15 +125,59 @@ Result of a real chalkd run:
 
 ### 139-2 chalkctl review
 
-Not started.
+**Built (2026-11-16, not committed).**
 
-- `chalkctl review init --domain` generates the secrets, writes `review.env`, and renders the review units.
-- It starts `postgres-review`, migrates, and writes the `review_instance` row.
-- It starts `chalkd-review`, adds the second site block to the Caddyfile, and reloads Caddy.
-- `review up`, `review down`, `review status`, and `review registration open|closed`.
-- A `REVIEW=absent|up|down` key in `chalkctl.conf`, so `init --force` and `maint` keep the review block.
-- `chalkctl push apns set --review` and the repin in `update.go`.
-- Tests: the production env and units never contain `CHALK_REVIEW_MODE`. The review units never name `chalk.network`, `postgres`, or `chalk-pgdata`.
+Commands:
+
+- `chalkctl review init --domain <host> [--admin-username demoadmin] [--admin-email]`. The default admin email is the one of production.
+- `review up`, `review down`, `review status`, `review registration open|closed`, and `review remove [--yes]`. `review remove` is not in the first plan.
+- `--no-start` on every command writes the files and starts or stops nothing.
+- `chalkctl push ... --review` acts on `review.env` and restarts `chalkd-review.service`.
+
+What `review init` does, in order:
+
+1. Test the input. The domain must differ from the production domain. Production must be initialized. No review instance can exist.
+2. Generate the secrets, copy `CHALK_TURN_SECRET` from production, and write `review.env` (mode 0600).
+3. Write the five review units and `review.conf`.
+4. Start `postgres-review`, create the database roles, and run a one-shot `chalkd --migrate-only` on the `chalk-review` network.
+5. Write the `review_instance` row into `postgres-review`.
+6. Start `chalkd-review`.
+7. Write the Caddy unit and the Caddyfile, and restart Caddy.
+
+Registration is open after `init`, so that the operator can make the demo accounts.
+Guest links (ephemeral rooms) are off in the review instance.
+
+Files:
+
+- `internal/chalkctl/review.go` has `ReviewConf`, `ReviewInit`, `ReviewSetUp`, `ReviewRegistration`, `ReviewStatus`, `ReviewRemove`, `repinReview`, `reviewEnv`, and `markReviewDB`.
+- The templates are `chalk-review.network`, `chalk-review-pgdata.volume`, `chalk-review-blobs.volume`, `chalk-review-postgres.container`, and `chalkd-review.container`.
+- The production templates changed in three places. `chalk.env.tmpl` has a database host that defaults to `postgres`. `chalk-caddy.container.tmpl` has an optional second `Network=` line. `Caddyfile.tmpl` has an optional second site block. The output for production is the same as before.
+- `init --force`, `maint`, and `update` read `review.conf`, so the Caddyfile and the Caddy unit keep the review lines.
+- `update` repins `chalkd-review` after a successful update of production, and restarts it if it is up. If that fails, `update` prints a warning only.
+
+Decisions:
+
+- A file `/etc/chalk/review.conf` (keys `DOMAIN` and `UP`) holds the state. The first plan was a `REVIEW` key in `chalkctl.conf`. The new file leaves the production config unchanged.
+- The review instance has its own unit templates. The production templates have no review parameters, so the production units are unchanged.
+- `reviewEnv` renders the production env template with the review values, and then appends the `CHALK_REVIEW_MODE=1` block. New settings in the production template reach the review env in step. The template never contains `CHALK_REVIEW_MODE`, and a test asserts it.
+- `review init` runs a one-shot `chalkd --migrate-only` before it writes the `review_instance` row. The table exists only after the migrations, and chalkd does not start in review mode without the row.
+- `init` restarts Caddy once, because a new network needs a new Caddy container. Production connections drop for a moment. `up` and `down` only reload Caddy.
+- The units have an `[Install]` section only if the instance is up, so a down instance stays down after a reboot.
+- If the instance is down, the Caddyfile answers with a 503 page. The text is "the demo server is off."
+- Production maintenance mode does not change the review site block.
+- `chalkctl update` does not backfill the review env file. It backfills the production env file only.
+
+Tests:
+
+- `review_test.go` tests the env file, the units, the Caddyfile (up, down, and with production maintenance), `review.conf`, the repin, and `review remove`.
+- The production env and templates never contain `CHALK_REVIEW_MODE`.
+- `caddy validate` accepts the Caddyfile in three cases through a container: up, down, and with production maintenance.
+
+Not verified on a real host:
+
+- The `systemctl` and `podman` steps. Only the `--no-start` paths run in tests.
+- The Quadlet `[Install]` behavior after a reboot.
+- The certificate issue for the review hostname.
 
 ### 139-3 snapshot and reset
 
@@ -148,12 +192,12 @@ Not started.
 Not started.
 
 - Close the open decision at 136-5 in `PHASE-136-IOS.md`.
-- Add the `CHANGELOG.md` entry and the `docs/phase-log.md` index row.
+- Add the `docs/phase-log.md` index row. The `CHANGELOG.md` entry exists since 139-2.
 - Write the text for the App Store Connect review notes. It has the server address, the user name, the password, the three demo users, and the steps to start a call.
 
 ## Manual checklist
 
-The operator does these after slices 139-1 to 139-3 ship:
+The operator does these after slices 139-1 to 139-3 ship. Steps 3 to 6 and the new steps 11 to 14 are the first real run of `chalkctl review`:
 
 1. Add a DNS A record for `chalk-a.abyle.org` that points to the production IP address.
 2. Cut a release and run `chalkctl update` on production. The release is a minor bump, because the server changed.
@@ -165,6 +209,10 @@ The operator does these after slices 139-1 to 139-3 ship:
 8. Optional: run `chalkctl push apns set --review` with the production key.
 9. Test the iOS app against `chalk-a.abyle.org`. Sign in with no TOTP code, and then start a call with a demo user.
 10. Run `chalkctl status` on production and sign in to production. The status must show no change, and the login must still ask for a TOTP code.
+11. After `review init`, run `chalkctl review status` and `systemctl status chalkd-review postgres-review`. Both services must be active, and `https://chalk-a.abyle.org` must serve after Caddy gets its certificate.
+12. Run `chalkctl review down` and open the review hostname. It must show "the demo server is off." Reboot the host. The instance must stay down, and production must start. Run `chalkctl review up` and sign in again.
+13. After the next production release, run `chalkctl update`. The output must show that the review instance is repinned and restarted. Run `systemctl cat chalkd-review` and read the `Image=` line.
+14. Run `chalkctl maint on` on production. The review hostname must keep serving. Run `chalkctl maint off`.
 
 ## Risk outside this phase
 

@@ -87,12 +87,29 @@ type InitParams struct {
 	// 73-2: load pg_stat_statements into Postgres so `chalkctl metrics` can
 	// report per-query timings. Off unless the operator asks for it.
 	PgStatStatements bool
+
+	// 139-2: DBHost is the Postgres host in the database URLs of the env file.
+	// Empty means "postgres", the container of production. The review env
+	// file sets "postgres-review".
+	DBHost string
+
+	// 139-2: the review instance, from review.conf. If ReviewDomain is empty,
+	// there is no review instance, and the Caddyfile and the Caddy unit have
+	// no review lines. ReviewUp selects the proxy or the "off" page.
+	ReviewDomain string
+	ReviewUp     bool
 }
 
 // renderTemplate loads templates/<name>.tmpl from the embedded FS and renders
 // it with p. "-" trim markers in the templates handle conditional blocks
 // cleanly; Option("missingkey=error") catches typos at render time.
 func renderTemplate(name string, p InitParams) ([]byte, error) {
+	return renderTemplateData(name, p)
+}
+
+// renderTemplateData renders a template with any data. The review templates
+// (139-2) use [ReviewParams].
+func renderTemplateData(name string, data any) ([]byte, error) {
 	raw, err := Templates.ReadFile("templates/" + name + ".tmpl")
 	if err != nil {
 		return nil, fmt.Errorf("read template %s: %w", name, err)
@@ -102,7 +119,7 @@ func renderTemplate(name string, p InitParams) ([]byte, error) {
 		return nil, fmt.Errorf("parse template %s: %w", name, err)
 	}
 	var buf bytes.Buffer
-	if err := t.Execute(&buf, p); err != nil {
+	if err := t.Execute(&buf, data); err != nil {
 		return nil, fmt.Errorf("render template %s: %w", name, err)
 	}
 	return buf.Bytes(), nil

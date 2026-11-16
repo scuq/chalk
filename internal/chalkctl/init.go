@@ -14,16 +14,19 @@ import (
 // paths (overridable for tests), the resolved verifier, and behavior flags.
 type InitOptions struct {
 	Cfg         Config
-	Version     string    // release tag to deploy, e.g. "v0.1.0" or "stable"
-	Verifier    Verifier  // CosignVerifier or NoopVerifier
-	Podman      *Podman   // nil -> NewPodman()
-	ConfigPath  string    // DefaultConfigPath
-	StatePath   string    // DefaultStatePath
-	EnvPath     string    // DefaultEnvPath
-	QuadletDir  string    // DefaultQuadletDir
-	CaddyfileAt string    // DefaultCaddyfile
-	NoStart     bool      // write everything but don't systemctl start
-	Out         io.Writer // progress log; nil -> os.Stdout
+	Version     string   // release tag to deploy, e.g. "v0.1.0" or "stable"
+	Verifier    Verifier // CosignVerifier or NoopVerifier
+	Podman      *Podman  // nil -> NewPodman()
+	ConfigPath  string   // DefaultConfigPath
+	StatePath   string   // DefaultStatePath
+	EnvPath     string   // DefaultEnvPath
+	QuadletDir  string   // DefaultQuadletDir
+	CaddyfileAt string   // DefaultCaddyfile
+	// 139-2: the review.conf to read, so that the Caddyfile and the Caddy unit
+	// keep the review instance. Empty means DefaultReviewConfPath.
+	ReviewConfPath string
+	NoStart        bool      // write everything but don't systemctl start
+	Out            io.Writer // progress log; nil -> os.Stdout
 
 	// Force re-runs init over an existing deployment (re-render config + env,
 	// restart). WITHOUT DropDB it PRESERVES the existing DB and secrets (so a
@@ -55,6 +58,9 @@ func (o *InitOptions) defaults() {
 	}
 	if o.CaddyfileAt == "" {
 		o.CaddyfileAt = DefaultCaddyfile
+	}
+	if o.ReviewConfPath == "" {
+		o.ReviewConfPath = DefaultReviewConfPath
 	}
 	if o.Out == nil {
 		o.Out = os.Stdout
@@ -340,6 +346,12 @@ func Init(o InitOptions) error {
 
 		PgStatStatements: cfg.PgStatStatements,
 	}
+	// 139-2: keep the review instance in the Caddyfile and the Caddy unit.
+	review, err := LoadReviewConf(o.ReviewConfPath)
+	if err != nil {
+		return err
+	}
+	p.ReviewDomain, p.ReviewUp = review.Domain, review.Up
 	if prev.Maintenance {
 		o.logf("maintenance mode is ON and stays on (chalkctl maint off to end it)")
 	}

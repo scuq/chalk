@@ -117,7 +117,7 @@ Everything here is built and released. Features that are off by default say so.
 - **Operations**: `chalkctl` deploys, updates, backs up, restores and migrates a
   whole host from cosign-verified container images, with a weekly update timer
   and Caddy for TLS. It also gives a maintenance page, `chalkctl metrics` for
-  Postgres, `chalkctl push`, `chalkctl wrapsig`, `chalkctl ephemeral`, and
+  Postgres, `chalkctl push`, `chalkctl review`, `chalkctl wrapsig`, `chalkctl ephemeral`, and
   `chalkctl serverkey show`. The server can log sign-in events, slow requests,
   a connected-user snapshot, and a web access log.
 
@@ -191,6 +191,7 @@ chalkctl backup    # encrypted archive of the database + env + config
 chalkctl restore   # load such an archive into an initialized host
 chalkctl maint     # on|off|status — serve a notice instead of the app
 chalkctl metrics   # what postgres knows about its own performance
+chalkctl review    # init|up|down|registration|status|remove — a demo instance for app review
 chalkctl images    # version/revision/created for each image in the stack
 chalkctl reconfigure-turn   # re-render + restart coturn only
 ```

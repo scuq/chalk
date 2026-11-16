@@ -182,6 +182,11 @@ func Update(o UpdateOptions) error {
 	if err := st.Save(o.StatePath); err != nil {
 		return err
 	}
+	// 139-2: the review instance runs the image of production. A failure here
+	// does not undo the update of production, so it is a warning only.
+	if err := repinReview(DefaultQuadletDir, DefaultReviewConfPath, o.Cfg.Image, newDigest, o.logf); err != nil {
+		fmt.Fprintf(o.Out, "  WARNING: the review instance is not on the new image: %v\n", err)
+	}
 	fmt.Fprintf(o.Out, "done. updated to %s (%s).\n", o.Version, shortDigest(newDigest))
 	return nil
 }
@@ -250,7 +255,12 @@ func trimPrefix(s, p string) string {
 // rewriting one line (rather than re-rendering the whole unit) keeps update
 // surgical -- it touches only what changes.
 func repinChalkdImage(image, digest string) error {
-	path := DefaultQuadletDir + "/chalkd.container"
+	return repinUnitImage(DefaultQuadletDir+"/chalkd.container", image, digest)
+}
+
+// repinUnitImage rewrites the Image= line of the Quadlet unit at path. The
+// review instance (139-2) uses it for chalkd-review.container.
+func repinUnitImage(path, image, digest string) error {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return err

@@ -75,6 +75,8 @@ func run(args []string) error {
 		return runServerKey(args[1:])
 	case "push":
 		return runPush(args[1:])
+	case "review":
+		return runReview(args[1:])
 	case "self-update", "rollback", "logs":
 		return fmt.Errorf("%q is not implemented yet in this build (arrives in a later ops slice)", cmd)
 	default:
@@ -539,6 +541,7 @@ func runPush(args []string) error {
 		teamID     = fs.String("team-id", "", "with `apns set`: the 10-character id of the Apple developer team")
 		topic      = fs.String("topic", "", "with `apns set`: the bundle id of the iOS app")
 		sandbox    = fs.Bool("sandbox", false, "with `apns set`: use the APNs sandbox (apps from Xcode). The default is production (TestFlight, App Store)")
+		review     = fs.Bool("review", false, "act on the review instance (phase 139): its env file, and a restart of chalkd-review")
 	)
 	rest, err := parsePositional(fs, args)
 	if err != nil {
@@ -558,6 +561,14 @@ func runPush(args []string) error {
 		return err
 	}
 	opts := chalkctl.PushOptions{EnvPath: *envPath, ConfigPath: *configPath}
+	if *review {
+		// 139-2: the review instance has its own env file and chalkd.
+		opts.EnvPath = chalkctl.DefaultReviewEnvPath
+		opts.Restart = func() error {
+			_, err := chalkctl.Systemctl("restart", "chalkd-review.service")
+			return err
+		}
+	}
 	switch sub {
 	case "status":
 		return chalkctl.PushStatus(opts)
@@ -573,6 +584,69 @@ func runPush(args []string) error {
 		})
 	case "apns clear":
 		return chalkctl.PushAPNsClear(opts, *yes)
+	default:
+		return fmt.Errorf(use)
+	}
+}
+
+// runReview runs `chalkctl review` (139-2), the review instance for app
+// review. See internal/chalkctl/review.go.
+func runReview(args []string) error {
+	fs := flag.NewFlagSet("review", flag.ContinueOnError)
+	var (
+		configPath    = fs.String("config", chalkctl.DefaultConfigPath, "config file of production")
+		domain        = fs.String("domain", "", "with `init`: the hostname of the review instance")
+		adminUsername = fs.String("admin-username", "demoadmin", "with `init`: the admin account of the review instance")
+		adminEmail    = fs.String("admin-email", "", "with `init`: the email of that admin (default: the admin email of production)")
+		noStart       = fs.Bool("no-start", false, "write the files, but do not start or stop a service")
+		yes           = fs.Bool("yes", false, "with `remove`: skip the confirmation prompt")
+	)
+	rest, err := parsePositional(fs, args)
+	if err != nil {
+		return err
+	}
+	const use = "usage: chalkctl review init --domain <host> | up | down | registration open|closed | status | remove [--yes]"
+	sub := "status"
+	switch {
+	case len(rest) == 1:
+		sub = rest[0]
+	case len(rest) == 2 && rest[0] == "registration":
+		sub = "registration " + rest[1]
+	case len(rest) > 1:
+		return fmt.Errorf(use)
+	}
+	if err := chalkctl.RequireRoot(); err != nil {
+		return err
+	}
+	cfg, err := chalkctl.LoadConfigFile(chalkctl.DefaultConfig(), *configPath)
+	if err != nil {
+		return err
+	}
+	opts := chalkctl.ReviewOptions{Cfg: cfg, ConfigPath: *configPath, NoStart: *noStart}
+	if *yes {
+		opts.Confirm = func(string) bool { return true }
+	}
+	switch sub {
+	case "init":
+		email := *adminEmail
+		if email == "" {
+			email = cfg.AdminEmail
+		}
+		return chalkctl.ReviewInit(opts, chalkctl.ReviewInitOptions{
+			Domain: *domain, AdminUsername: *adminUsername, AdminEmail: email,
+		})
+	case "up":
+		return chalkctl.ReviewSetUp(opts, true)
+	case "down":
+		return chalkctl.ReviewSetUp(opts, false)
+	case "registration open":
+		return chalkctl.ReviewRegistration(opts, true)
+	case "registration closed":
+		return chalkctl.ReviewRegistration(opts, false)
+	case "status":
+		return chalkctl.ReviewStatus(opts)
+	case "remove":
+		return chalkctl.ReviewRemove(opts)
 	default:
 		return fmt.Errorf(use)
 	}
@@ -759,6 +833,9 @@ Commands:
   push         status | enable | disable | rotate-key --yes -- web push notifications (phase 65)
                apns set --key-file F --key-id K --team-id T --topic B [--sandbox] | apns clear --yes
                  -- native push to the iOS app (phase 136)
+               --review: act on the review instance (phase 139)
+  review       init --domain <host> | up | down | registration open|closed | status | remove [--yes]
+                 -- a separate demo instance for app review, without the TOTP step at login (phase 139)
   self-update  update the chalkctl binary itself
   rollback     re-pin the previous chalk image
   logs         tail the stack's logs

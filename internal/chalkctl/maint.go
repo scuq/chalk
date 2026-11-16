@@ -35,6 +35,10 @@ type MaintOptions struct {
 	StatePath   string
 	CaddyfileAt string
 	Out         io.Writer
+
+	// 139-2: ReviewConfPath is the review.conf to read, so that the Caddyfile
+	// keeps the review block. Empty means DefaultReviewConfPath.
+	ReviewConfPath string
 }
 
 func (o *MaintOptions) defaults() {
@@ -49,6 +53,9 @@ func (o *MaintOptions) defaults() {
 	}
 	if o.Out == nil {
 		o.Out = os.Stdout
+	}
+	if o.ReviewConfPath == "" {
+		o.ReviewConfPath = DefaultReviewConfPath
 	}
 }
 
@@ -96,7 +103,11 @@ func Maint(o MaintOptions) error {
 		return nil
 	}
 
-	if err := writeCaddyfile(o.Cfg, o.CaddyfileAt, o.On, msg); err != nil {
+	review, err := LoadReviewConf(o.ReviewConfPath)
+	if err != nil {
+		return err
+	}
+	if err := writeCaddyfile(o.Cfg, o.CaddyfileAt, o.On, msg, review); err != nil {
 		return err
 	}
 	fmt.Fprintf(o.Out, "  wrote %s\n", o.CaddyfileAt)
@@ -148,11 +159,16 @@ func MaintStatus(statePath string, out io.Writer) error {
 // fields the Caddyfile template reads are filled in -- rendering the whole
 // InitParams here would mean reconstructing secrets this command has no
 // business touching.
-func writeCaddyfile(cfg Config, path string, maintenance bool, message string) error {
+//
+// 139-2: review is the review instance from review.conf. Its zero value means
+// that there is no review instance.
+func writeCaddyfile(cfg Config, path string, maintenance bool, message string, review ReviewConf) error {
 	data, err := renderTemplate("Caddyfile", InitParams{
 		Domain:             cfg.Domain,
 		Maintenance:        maintenance,
 		MaintenanceMessage: message,
+		ReviewDomain:       review.Domain,
+		ReviewUp:           review.Up,
 	})
 	if err != nil {
 		return err

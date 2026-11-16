@@ -46,12 +46,18 @@ func pgQuoteLiteral(s string) string {
 // Postgres container. The owner role (chalk) authenticates over the
 // container-local socket (trust), the same way backup and restore already do.
 func ensureDBRoles(p *Podman, appPassword, guestPassword string) error {
-	if err := waitForPostgres(p, 30*time.Second); err != nil {
+	return ensureDBRolesIn(p, pgContainer, appPassword, guestPassword)
+}
+
+// ensureDBRolesIn creates the database roles in the Postgres container named
+// container. The review instance (139-2) uses postgres-review.
+func ensureDBRolesIn(p *Podman, container, appPassword, guestPassword string) error {
+	if err := waitForPostgresIn(p, container, 30*time.Second); err != nil {
 		return err
 	}
 	sql := rolesSQL(appPassword, guestPassword)
 	args := append([]string{"psql", "-U", "chalk", "-d", "chalk"}, "-q", "-v", "ON_ERROR_STOP=1")
-	if err := p.ExecIn(strings.NewReader(sql), pgContainer, args...); err != nil {
+	if err := p.ExecIn(strings.NewReader(sql), container, args...); err != nil {
 		return fmt.Errorf("create db roles: %w", err)
 	}
 	return nil

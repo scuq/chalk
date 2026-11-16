@@ -18,24 +18,26 @@ Phase 130 has two open points. The phase-doc index at the top of
 [phase-log.md](phase-log.md) is the complete list of what exists and which
 phases are *planned, not started*.
 
-## Phase 139 — review instance: IN PROGRESS, 139-1 built
+## Phase 139 — review instance: IN PROGRESS, 139-1 and 139-2 built
 
 A second chalk instance that the Apple reviewer signs in to. Its password login
 has no TOTP step. Record in [phases/PHASE-139-REVIEW.md](phases/PHASE-139-REVIEW.md).
 
-- Slice 139-1 is built (2026-11-16, not committed): review mode in chalkd. It
-  needs two gates, the `CHALK_REVIEW_MODE` env var and the row of the table
+- Slice 139-1 is built and committed: review mode in chalkd. It needs two
+  gates, the `CHALK_REVIEW_MODE` env var and the row of the table
   `review_instance`. If the env var is set and the row is missing, chalkd does
   not start.
-- Slice 139-2 is open: `chalkctl review` (init, up, down, status, and
-  registration), and the second site block in the Caddyfile.
+- Slice 139-2 is built (2026-11-16, not committed): `chalkctl review` (init, up,
+  down, status, registration, and remove), the second site block in the
+  Caddyfile, and the repin in `chalkctl update`. Only the `--no-start` paths
+  run in tests. The `systemctl` and `podman` steps are not verified on a real
+  host.
 - Slice 139-3 is open: `review snapshot` and `review reset`.
-- Slice 139-4 is open: the paperwork, the changelog entry, and the text of the
-  review notes.
-- Nothing writes the `review_instance` row until slice 139-2. The instance
-  cannot start in review mode before that slice.
+- Slice 139-4 is open: the paperwork, the phase-log row, and the text of the
+  review notes. The changelog entry exists since 139-2.
 - The operator does the manual steps in the phase doc after 139-3 ships. This
-  includes the DNS record and the demo accounts.
+  includes the DNS record, the demo accounts, and the first real run of
+  `chalkctl review`.
 
 ## Phase 137 — phone polish: built, the device checks are open
 
