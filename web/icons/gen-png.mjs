@@ -7,7 +7,9 @@
 // entirely in favour of <link rel="apple-touch-icon">.
 //
 // Run from web/ with the e2e suite's chromium (no new dependency here):
-//   node icons/gen-png.mjs
+//   node icons/gen-png.mjs [FILE...]
+// With no argument the tool renders every target. With one or more file
+// names, for example AppIcon.png, it renders only the matching targets.
 //
 //   icon-192 / icon-512      purpose "any": the mark's own rounded plate,
 //                            transparent outside it.
@@ -17,6 +19,9 @@
 //                            80% circle).
 //   apple-touch-icon (180)   full-bleed; iOS rounds the corners itself and
 //                            composites anything transparent onto black.
+//   AppIcon (1024)           iOS app icon, opaque, on the plate colour of
+//                            apple-touch-icon. Written to
+//                            ios/chalk/Assets.xcassets/AppIcon.appiconset/.
 
 import { chromium } from "../../test/e2e/node_modules/playwright/index.mjs";
 import { readFileSync } from "node:fs";
@@ -32,10 +37,19 @@ const targets = [
   { file: "icon-512.png", size: 512, scale: 1, bleed: false },
   { file: "icon-maskable-512.png", size: 512, scale: 0.68, bleed: true },
   { file: "apple-touch-icon.png", size: 180, scale: 0.82, bleed: true },
+  {
+    file: "../../ios/chalk/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
+    size: 1024,
+    scale: 0.82,
+    bleed: true,
+  },
 ];
 
+const only = process.argv.slice(2);
+const chosen = only.length ? targets.filter((t) => only.some((name) => t.file.endsWith(name))) : targets;
+
 const browser = await chromium.launch();
-for (const { file, size, scale, bleed } of targets) {
+for (const { file, size, scale, bleed } of chosen) {
   const page = await browser.newPage({ viewport: { width: size, height: size } });
   const art = Math.round(size * scale);
   await page.setContent(

@@ -4,7 +4,7 @@ A plan for a small iPhone app that wraps the chalk web page.
 The goal is that a voice call continues when the user switches apps or locks the screen.
 The design was written on 14 November 2026.
 
-**Status: in progress.** Slice 136-1 is built and measured on a device (2026-11-16). The gate passed. Slices 136-2 to 136-6 are not started.
+**Status: in progress.** Slice 136-1 is built and measured on a device (2026-11-16). The gate passed. Slice 136-2 is built and checked on a device (2026-11-16), with two checks open. Slices 136-3 to 136-6 are not started.
 **Tag:** `#ios` → `tools/where.sh -g ios` (this file and the `ios/` directory).
 
 Decisions from the owner:
@@ -80,12 +80,12 @@ The app is a thin shell on the pattern of the desktop app (phase 104, [PHASE-104
 
 ## Slices
 
-Slice 136-1 is done. The other slices are not started.
+Slices 136-1 and 136-2 are built. The other slices are not started.
 
 | Slice | Content | Status |
 | --- | --- | --- |
 | 136-1 | Device test, the gate for the phase. See below. | done, 2026-11-16 |
-| 136-2 | The shell: server address screen, navigation rule, permission grant, safe areas, file download, app icon. | not started |
+| 136-2 | The shell: server address screen, navigation rule, permission grant, safe areas, file download, app icon. | built, 2026-11-16. Open: the Settings toggle and the print window. See below. |
 | 136-3 | The web client knows the shell, and mutes on a phone call. See below. | not started |
 | 136-4 | Notifications in the shell. A decision first. See below. | not started |
 | 136-5 | Distribution. See below. | not started |
@@ -211,6 +211,98 @@ One measurement is open: if a passkey sign-in works in the web view.
 The owner did not try it.
 The API is present, but that does not show that a sign-in works.
 The free Personal Team has no Associated Domains capability, so a failure would not isolate `WKWebView`.
+
+### Result of 136-2
+
+The owner checked on 16 November 2026 on an iPhone 17 Pro with iOS 27.2.1.
+The development stack ran through ngrok, as in 136-1.
+
+#### What was built
+
+- Server address screen: `ios/chalk/ServerScreen.swift`, `ios/chalk/AppModel.swift`, and `ios/chalk/ContentView.swift`.
+  The app shows it on first use.
+- Address rule: `ios/chalk/ServerAddress.swift` ports `normalizeServerURL` (`desktop/src/config.ts:62-79`).
+  - A bare host gets `https://`.
+  - The rule drops the path, the query, and the fragment.
+  - The rule refuses credentials.
+  - The rule lowercases the host and drops the default port.
+  - The app stores `origin/` in `UserDefaults`.
+  - The app does not probe if the address is a chalk server, as the desktop app does not.
+- If the main page fails to load, the app returns to the screen.
+  The screen shows "Could not reach <host> (<reason>)", and the field holds the last server.
+- Navigation rule: `ios/chalk/LinkRule.swift` ports `classifyLink` (`desktop/src/links.ts:23-37`).
+  - A same-origin link stays in the app.
+  - Other http and https links and `mailto` links open in Safari.
+  - `about:blank` opens a child window.
+  - The rule denies all other links.
+- `ios/chalk/ChalkWebView.swift` applies the rule to main-frame navigations and to new-window requests (`target=_blank` and `window.open`).
+  Subframe navigations are allowed, as in the desktop app, where `will-navigate` sees only the main frame.
+  A same-origin link that asks for a new window loads in the main web view.
+- Child windows: an `about:blank` window opens in a sheet with a **Close** button.
+  The recovery-phrase print window and the call pop-outs are such windows.
+  `window.close()` dismisses the sheet.
+- Downloads: a blob `<a download>` link, a response marked as attachment, and a response of a type that the web view cannot show become a `WKDownload`.
+  The file goes to a temporary folder, and the share sheet opens. The user can choose **Save to Files** there.
+- Safe areas: the web view extends under the notch and the home indicator.
+  The scroll view adds no inset, because the page uses `viewport-fit=cover` and `env(safe-area-inset-*)`.
+- The media grant compares the full origin (scheme, host, and port) with the server origin.
+  The page reloads if its web content process ends.
+  The shell is still inspectable.
+- App icon: a 1024 by 1024 opaque PNG in `ios/chalk/Assets.xcassets/AppIcon.appiconset/`.
+  A new target in `web/icons/gen-png.mjs` renders it from `web/icons/favicon.svg` on the plate colour of the apple-touch icon.
+  The tool now takes optional file names and renders only the matching targets, so `node icons/gen-png.mjs AppIcon.png` does not render the committed web PNGs again.
+
+#### Decisions
+
+- The app accepts https only.
+  It refuses plain http, also for loopback hosts, and has no equivalent of the desktop `--insecure` flag.
+  The session cookie is `Secure`, and a phone cannot reach a loopback development stack.
+- To change the server later, the user turns on **Choose server on next launch** in the iOS Settings (`ios/chalk/Settings.bundle`, key `choose_server`).
+  The app reads the toggle when it starts and each time it returns to the foreground.
+  If the toggle is on, the app clears it and shows the server screen.
+  The owner chose this over a gesture and over a screen only after a load failure.
+
+#### Tests
+
+The new Swift Testing target `chalkTests` has 10 tests in two suites (`ios/chalkTests/RulesTests.swift`).
+The tests mirror `desktop/src/config.test.ts` and `desktop/src/links.test.ts`, and add the https-only rule.
+All pass.
+Run them on the Mac over SSH:
+
+```
+xcodebuild test -project chalk.xcodeproj -scheme chalk -destination 'platform=iOS Simulator,id=<sim>'
+```
+
+The owner made the target in Xcode, because a new target needs the graphical interface.
+A source file in a synchronized folder needs no project edit.
+
+#### Build loop
+
+Device installs stay on **Run** in Xcode.
+Signing over SSH fails, because the login keychain is locked in an SSH session ("User interaction is not allowed").
+It fails also after `set-key-partition-list`.
+A separate build keychain was considered and is deferred.
+Builds and tests for the simulator run over SSH.
+
+#### Device check
+
+These checks passed:
+
+- The server screen accepted a bare host, and the page loaded after the ngrok warning page.
+- The safe areas look right. This is a visual check, not a measurement.
+- An external link in a message opened in Safari, and chalk stayed open.
+- An attachment download opened the share sheet.
+- The app icon shows on the home screen.
+
+#### Open checklist
+
+These checks are not done:
+
+- The Settings toggle brings back the server screen with the last server in the field.
+  A plain http address shows a refusal message on the device.
+  The Swift tests already cover the rule.
+- The recovery-phrase print window opens in the sheet and **Close** works.
+  Unknown: if `window.print()` shows the print dialog in `WKWebView` on iOS.
 
 ### 136-3 the page knows the shell
 

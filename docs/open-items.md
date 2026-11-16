@@ -580,8 +580,11 @@ same space.
   in progress. Slice 136-1 is done (2026-11-16): on an iPhone, a call
   continued through an app switch and a screen lock in the shell, so the gate
   passed. The call held for more than 5 min in each case, and
-  the shell has no `PushManager` and no `Notification`. Open next: 136-2 (the
-  shell), one open measurement (a passkey sign-in in the shell), 136-3 (hide
+  the shell has no `PushManager` and no `Notification`. Slice 136-2 is built
+  (2026-11-16): the server address screen, the navigation rule, child windows,
+  downloads, safe areas, and the app icon. Open: two 136-2 device checks (the
+  Settings toggle that brings back the server screen, and the recovery-phrase
+  print window), one measurement (a passkey sign-in in the shell), 136-3 (hide
   the Home Screen push hint in the shell), and the idea in 136-3 to
   mute the microphone and turn the camera off on a phone call. Installs that
   last longer than 7 days need a paid Apple Developer account. In the Home
