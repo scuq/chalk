@@ -3,14 +3,14 @@
 // scripts since 129-19, the new-year key has seven scripts since 129-20, and
 // the winterfest key has eight scripts since 129-21, and the black-week key
 // has nine scripts since 129-22, and the late-autumn key has seven scripts since
-// 129-23.
+// 129-23 and eight scripts since 129-25.
 //
 // A fake Painter records the rectangles, so a test needs no canvas. The tests
-// check the table (73 scenes: the rows of the SEASONS ids except "christmas",
+// check the table (74 scenes: the rows of the SEASONS ids except "christmas",
 // "new-year", "winterfest", "black-week", and "late-autumn", the ten scripts of
 // "neutral", the seven scripts of "christmas", the seven scripts of "new-year",
 // the eight scripts of "winterfest", the nine scripts of "black-week", and the
-// seven scripts of "late-autumn"), whole
+// eight scripts of "late-autumn"), whole
 // pixels and a see-through strip in every scene of a season, a paint for
 // each prop, the rotation and its wrap, the fade, a start index outside the
 // range, the walkers, a ghost that floats, a long frame, and a resize. 129-13:
@@ -88,7 +88,7 @@ function recorder() {
   return { ctx, rects };
 }
 
-test("there are 73 scenes: five rows for each row season, and the scripts of the six script keys", () => {
+test("there are 74 scenes: five rows for each row season, and the scripts of the six script keys", () => {
   const ids = new Set<string>(SEASONS.map((s) => s.id));
   ids.delete("christmas");
   ids.delete("new-year");
@@ -106,7 +106,7 @@ test("there are 73 scenes: five rows for each row season, and the scripts of the
   assert.equal(sceneCount("new-year"), 7);
   assert.equal(sceneCount("winterfest"), 8);
   assert.equal(sceneCount("black-week"), 9);
-  assert.equal(sceneCount("late-autumn"), 7);
+  assert.equal(sceneCount("late-autumn"), 8);
   const names = [
     ...KEYS.flatMap((k) => SCENES[k as keyof typeof SCENES].map((r) => r.name)),
     ...OFFSEASON.map((x) => x.name),
@@ -116,8 +116,8 @@ test("there are 73 scenes: five rows for each row season, and the scripts of the
     ...BLACKWEEK.map((x) => x.name),
     ...LATEAUTUMN.map((x) => x.name),
   ];
-  assert.equal(names.length, 73);
-  assert.equal(new Set(names).size, 73);
+  assert.equal(names.length, 74);
+  assert.equal(new Set(names).size, 74);
 });
 
 test("every scene draws whole pixels and leaves the strip see-through, at each step", () => {
@@ -475,9 +475,20 @@ test("129-22: the bar weighs twice as much as each other black week scene, and e
 });
 
 test("129-23: the late-autumn key runs its scripts and holds one through a visit", () => {
-  const scene = createScene("late-autumn", W, H, 3, false);
-  assert.equal(scene.script, LATEAUTUMN[3]);
+  const scene = createScene("late-autumn", W, H, 2, false);
+  assert.equal(scene.script, LATEAUTUMN[2]);
   assert.equal(scene.row.name, "The Vineyard");
   for (let t = 0; t < 80; t += 0.1) stepScene(scene, 0.1);
-  assert.equal(scene.index, 3);
+  assert.equal(scene.index, 2);
+});
+
+// 129-25: The late-autumn key has the three scenes that stay and the five new
+// ones. The names are in the order of rotation, and each still frame is inside
+// its loop.
+test("129-25: the late-autumn key has three kept scenes and five new ones, in order", () => {
+  assert.deepEqual(
+    LATEAUTUMN.map((s) => s.name),
+    ["The Thing in the Fog", "The Duel in the Garden", "The Vineyard", "Leaving the Valley", "The Leaf Pile", "The Quiet Pond", "Tea on the Promenade", "The Wait"],
+  );
+  for (const s of LATEAUTUMN) assert.ok(s.still >= 0 && s.still < s.period, s.name);
 });

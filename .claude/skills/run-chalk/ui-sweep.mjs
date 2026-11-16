@@ -92,7 +92,7 @@
 // neutral, the seven scripts in web/src/season/christmas.ts for christmas, the
 // seven scripts in web/src/season/newyear.ts for new-year, the eight scripts
 // in web/src/season/winterfest.ts for winterfest, the nine scripts in
-// web/src/season/blackweek.ts for black-week, or the seven scripts in
+// web/src/season/blackweek.ts for black-week, or the eight scripts in
 // web/src/season/lateautumn.ts for late-autumn.
 // For each target, the script prints
 // "SCENE <key>: <name>" on standard output, with "(wanted X)" if it gave

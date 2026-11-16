@@ -6,7 +6,7 @@
 // key has seven scripts and no rows. 129-21: the winterfest key has eight
 // scripts and no rows. 129-22: the black-week key has nine scripts and no
 // rows, and a script can have a weight. 129-23: the late-autumn key has seven
-// scripts and no rows.
+// scripts and no rows. 129-25: the late-autumn key has eight scripts.
 //
 // This module draws a small pixel scene and moves it. There are eleven keys:
 // the ten season ids of seasons.ts, and "neutral" for a date in no season.
@@ -17,8 +17,8 @@
 // has the seven scripts of CHRISTMAS (christmas.ts), "new-year" has the seven
 // scripts of NEWYEAR (newyear.ts), "winterfest" has the eight scripts of
 // WINTERFEST (winterfest.ts), and "black-week" has the nine scripts of
-// BLACKWEEK (blackweek.ts), and "late-autumn" has the seven scripts of
-// LATEAUTUMN (lateautumn.ts). So there are 73 scenes.
+// BLACKWEEK (blackweek.ts), and "late-autumn" has the eight scripts of
+// LATEAUTUMN (lateautumn.ts). So there are 74 scenes.
 // A script draws its own opaque strip, and it does not use the fields of a
 // row. The rows stay see-through.
 // A scene shows its row or its script. A scene that rotates (rotate is true)
@@ -133,7 +133,7 @@ const JUMP = 40;
  * rows in SCENES, except five season keys that have scripts. "christmas" has
  * the seven scripts of CHRISTMAS, "new-year" has the seven scripts of NEWYEAR,
  * "winterfest" has the eight scripts of WINTERFEST, "black-week" has the nine
- * scripts of BLACKWEEK, and "late-autumn" has the seven scripts of LATEAUTUMN.
+ * scripts of BLACKWEEK, and "late-autumn" has the eight scripts of LATEAUTUMN.
  * "neutral", for a date in no season, has the ten scripts of OFFSEASON.
  */
 export type SceneKey = SeasonId | "neutral";

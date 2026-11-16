@@ -1,6 +1,6 @@
 # Phase 129 — seasonal: a scene for the season
 
-**Status:** in progress. Built: 129-1 – 129-24. Open: 129-25 and later. They tune the five keys that have rows, one key in each slice, in this order: spring-bloom, green-season, midsummer, harvest-festival, spooky-season. One cleanup item is open: the dead snow branches of the scene engine (see "The winterfest scripts"). 129-1 – 129-3 shipped in v0.8.27, and 129-4 – 129-6 shipped in v0.9.0. 129-7 to 129-14 shipped in v0.10.0. 129-15 and later are not yet in a release. 129-8 to 129-10 land together.
+**Status:** in progress. Built: 129-1 – 129-25. Open: 129-26 and later. They tune the five keys that have rows, one key in each slice, in this order: spring-bloom, green-season, midsummer, harvest-festival, spooky-season. One cleanup item is open: the dead snow branches of the scene engine (see "The winterfest scripts"). 129-1 – 129-3 shipped in v0.8.27, and 129-4 – 129-6 shipped in v0.9.0. 129-7 to 129-14 shipped in v0.10.0. 129-15 and later are not yet in a release. 129-8 to 129-10 land together.
 **Tags:** `#seasonal` → `tools/where.sh -g seasonal`
 
 ## The problem
@@ -30,7 +30,9 @@ Monday before Black Friday to Cyber Monday. It is the first season whose dates
 move with the year, and the first whose scenes show sign words and prices.
 129-23 replaced the five Late Autumn rows with seven scripted scenes: five nods
 to films and series, and two nods to games. 129-24 let the neutral scene show
-two times in each window, and only while the chalk window has focus.
+two times in each window, and only while the chalk window has focus. 129-25
+replaced four of the seven Late Autumn scenes with five new nods to films and
+series, so the key has eight scenes and no nod to a game.
 
 ## The design
 
@@ -226,13 +228,13 @@ variety. It exports these names:
   has the seven scripts of `CHRISTMAS` (129-19), `"new-year"` has the seven
   scripts of `NEWYEAR` (129-20), `"winterfest"` has the eight scripts of
   `WINTERFEST` (129-21), `"black-week"` has the nine scripts of `BLACKWEEK`
-  (129-22), and `"late-autumn"` has the seven scripts of `LATEAUTUMN` (129-23).
-  So there are 73 scenes.
+  (129-22), and `"late-autumn"` has the eight scripts of `LATEAUTUMN` (129-23,
+  129-25). So there are 74 scenes.
 - `SCENES_PER_KEY` (5), `SCENE_SECONDS` (35), and `FADE_SECONDS` (0.7).
 - `sceneCount(key)` returns 10 for `"neutral"`, 7 for `"christmas"`,
-  `"new-year"`, and `"late-autumn"`, 8 for `"winterfest"`, 9 for `"black-week"`,
+  `"new-year"`, 8 for `"winterfest"` and `"late-autumn"`, 9 for `"black-week"`,
   and `SCENES_PER_KEY` for any other key (129-18, 129-19, 129-20, 129-21,
-  129-22, 129-23).
+  129-22, 129-25).
   `isScripted(key)` reports whether `key` is a `ScriptKey` (129-19). Since
   129-22 it tests whether `key` is a key of `SCRIPTED`.
 - `sceneWeights(key)` returns the weight of each scene of `key`, in the order
@@ -287,7 +289,7 @@ The 73 scenes:
 | `midsummer` | Golden Meadow, Lakeside Sunset, Campfire Evening, Firefly Night, Festival Lanterns |
 | `harvest-festival` | Mushroom Grove, Apple Orchard, Hayfield Run, Village Market, Golden Fields |
 | `spooky-season` | Old Graveyard, Haunted Manor, Witchwood, Foggy Marsh, Pumpkin Patch |
-| `late-autumn` | The Thing in the Fog, The Duel in the Garden, Coffee and the Owl, The Vineyard, Leaf Chase, The Raid, The Harvest Helpers |
+| `late-autumn` | The Thing in the Fog, The Duel in the Garden, The Vineyard, Leaving the Valley, The Leaf Pile, The Quiet Pond, Tea on the Promenade, The Wait |
 | `neutral` | Time Car, Night Highway, Code Rooftop, Starship, The Gate, Light Cycles, Twin Suns, The Hatch, Shadow over Town, Flashlights in the Woods |
 
 #### Rotation and fade
@@ -381,8 +383,8 @@ The scene differs from the supplied engine on purpose:
 
 `web/src/season/scene.test.ts` uses a fake `Painter`. It checks the table (five
 keys with five rows each, ten neutral scripts, seven Christmas scripts, seven
-New Year scripts, eight Winterfest scripts, nine Black Week scripts, seven
-Late Autumn scripts, 73 distinct names, and the same ids as `SEASONS` in
+New Year scripts, eight Winterfest scripts, nine Black Week scripts, eight
+Late Autumn scripts, 74 distinct names, and the same ids as `SEASONS` in
 `SCENES`, except `christmas`, `new-year`, `winterfest`, `black-week`, and
 `late-autumn`),
 that every scene of a season draws whole pixels with no
@@ -616,7 +618,7 @@ ground, and the smoke of a cabin chimney. They key on `winterfest` and
 `new-year`, and no row reaches them now. The same holds for the `late-autumn`
 entries of `PALETTES` and `CANOPY` and the `late-autumn` case of `isLeafless`
 (129-23). They stay on purpose for the tuning
-slices of 129-24 and later. After the last of those slices, remove each branch
+slices of 129-26 and later. After the last of those slices, remove each branch
 that no row uses, or give it a row. The comments on the branches say that no
 row reaches them.
 
@@ -674,16 +676,16 @@ as often as each other scene that the last-visit rule allows. `SeasonScene.tsx`
 passes `sceneWeights(key)` to `nextRow`. The always-on hours ignore weights,
 and black week has no always-on hours.
 
-#### The late-autumn scripts (129-23)
+#### The late-autumn scripts (129-23, 129-25)
 
 The `"late-autumn"` key runs scripts too. `web/src/season/lateautumn.ts` holds
-the seven scripts in `LATEAUTUMN`, and `SCRIPTED` and `isScripted` in `scene.ts`
-list the key. The key runs from 16 to 22 November. The user chose the seven on
-an animated mock-up page.
+the eight scripts in `LATEAUTUMN`, and `SCRIPTED` and `isScripted` in `scene.ts`
+list the key. The key runs from 16 to 22 November. The user chose the scenes on
+an animated mock-up page. 129-23 had seven scripts. 129-25 dropped four of
+them and added five.
 
-Each script is a nod to a film, a series, or a game, and a person knows it by
-one moment in autumn. Five scripts nod to a film or a series, and two nod to a
-game. The rules of the earlier scripts hold: no title, no logo, no lettering,
+Each script is a nod to a film or a series, and a person knows it by one
+moment in autumn. No script nods to a game. The rules of the earlier scripts hold: no title, no logo, no lettering,
 no likeness of an actor, and the `CHALK` sign as the only text. Each character
 is generic.
 
@@ -691,17 +693,26 @@ is generic.
 |---|---|---|---|
 | The Thing in the Fog | The X-Files | Three layers of fog drift over autumn trees. Two agents aim light beams at a dark monster that comes into view, steps closer, and fades out | 16 s |
 | The Duel in the Garden | Kill Bill Vol. 1 | A fighter in yellow and a fighter in white cross swords by a red maple. The strip flashes white, and the red leaves scatter | 14 s |
-| Coffee and the Owl | Twin Peaks | A figure in a dark suit raises a cup in a pine forest, and an owl blinks and glows | 16 s |
 | The Vineyard | Star Trek: The Next Generation | A bald man in a red and black uniform top picks grapes by a stone château. His badge chirps, a column of light takes him away, and a starship glides past | 24 s |
-| Leaf Chase | Animal Crossing, a game | A villager with a net runs after a falling leaf and catches it | 12 s |
-| The Raid | Fantastic Mr. Fox | A fox with a bundle runs past farm buildings and lamp beams, and jumps into a hole | 16 s |
-| The Harvest Helpers | Stardew Valley, a game | Rows of crops vanish one by one, and five small helpers hop to a crate with a crop each | 24 s |
+| Leaving the Valley | The Lord of the Rings: The Fellowship of the Ring | At dusk, nine walkers leave a pale hall with arches in a line, step onto a stone bridge over a stream, and walk out to the right. Gold leaves fall | 20 s |
+| The Leaf Pile | Peanuts | A kid rakes a growing pile of leaves. A beagle jumps from a doghouse roof and dives in. The leaves burst, the kid slumps, and the beagle returns to the roof | 16 s |
+| The Quiet Pond | Stargate SG-1 | A man in a cap fishes from a folding chair at a pond. A leaf lands on the water and rings spread. The bobber never moves, and he drinks from a bottle | 16 s |
+| Tea on the Promenade | Star Trek: Deep Space Nine | In a station with two round windows, a man with grey ridged skin and a doctor have tea. One autumn leaf floats across, and the brow of the grey man goes up when it is near | 16 s |
+| The Wait | Futurama | A small dog sits outside a pizzeria through a day, a dusk, and a night. A stranger walks past and the dog wags. The dog stays | 24 s |
 
 The user asked for the monster of The Thing in the Fog, and for the maple to
 stand to the left of the sign. The user reworked The Vineyard: a stone château,
 vine rows with grapes that sway, a bald man with a combadge, a chirp, a beam
-that leaves the basket behind, and a starship. The loops of The Vineyard and
-The Harvest Helpers are slow, 24 s each, at the request of the user.
+that leaves the basket behind, and a starship. The loop of The Vineyard is
+slow, 24 s, at the request of the user. The loop of The Wait is also 24 s.
+
+129-25 dropped Coffee and the Owl (Twin Peaks), Leaf Chase (Animal Crossing),
+The Raid (Fantastic Mr. Fox), and The Harvest Helpers (Stardew Valley), at the
+request of the user. In Leaving the Valley, the `walker` function draws each of
+the nine walkers from one `Walker` entry of the `COMPANY` table. The Wait
+changes its sky with the time:
+day until 9 s, dusk from 9 s to 13 s, night from 13 s to 21 s, and day again
+from 21 s to 24 s. `mix` blends the colors of the sky.
 
 `PALETTES` and `CANOPY` keep an entry for `"late-autumn"` for the same reason
 as for `"christmas"`. A script never reads them.
@@ -1384,7 +1395,27 @@ and the `.png` loader in `web/test.mjs`. `pickFigure`, `auraFor`, and the
   the window to the front before it loads. Text in `CHANGELOG.md` and
   `whats-new.ts`.
 
-- **129-25 and later — tune the scenes (planned, not started).** One key for
+- **129-25 — Late Autumn, five new scenes (built).** The problem: the user
+  wanted other scenes in Late Autumn than four of the seven of 129-23. The
+  design: the slice drops four scenes and adds five, so `LATEAUTUMN` has eight
+  scripts (see "The late-autumn scripts"). The user asked for the change and
+  chose the five new scenes. A mock-up page came before the port.
+  Dropped: Coffee and the Owl (Twin Peaks), Leaf Chase (Animal Crossing), The
+  Raid (Fantastic Mr. Fox), and The Harvest Helpers (Stardew Valley). Kept: The
+  Thing in the Fog, The Duel in the Garden, and The Vineyard. Added: Leaving
+  the Valley, The Leaf Pile, The Quiet Pond, Tea on the Promenade, and The
+  Wait. Each new scene is a nod to a film or a series, so the set has no nod
+  to a game. `lateautumn.ts` has the new helpers `mix` (blends two hex colors)
+  and `line` (draws a line of single pixels), and the `Walker` interface, the
+  `walker` function, and the `COMPANY` table for Leaving the Valley. There are
+  74 scenes. The five tuning slices move by one number: they are 129-26 and
+  later, in the same order. Tests in `scene.test.ts`: the table
+  has 8 and 74 scenes, the hold test of 129-23 uses The Vineyard at index 2,
+  and a new test checks the order of the names and that each still frame is
+  inside its loop. Text in `CHANGELOG.md`. The entry
+  of `whats-new.ts` still says seven scenes and games (open).
+
+- **129-26 and later — tune the scenes (planned, not started).** One key for
   each slice, in this order: spring-bloom, green-season, midsummer,
   harvest-festival, spooky-season. These are the five keys that have rows.
 
@@ -1431,9 +1462,9 @@ and the `.png` loader in `web/test.mjs`. `pickFigure`, `auraFor`, and the
     A tap in that moment can land on a different row. This is the accepted cost
     of a row that goes away.
 15. A visit shows one scene of the five, of the seven for christmas and
-    new-year, and late-autumn, of the eight for winterfest, of the nine for
+    new-year, of the eight for winterfest and late-autumn, of the nine for
     black-week, or of the ten for neutral (129-15, 129-19, 129-20, 129-21,
-    129-22, 129-23). The row
+    129-22, 129-23, 129-25). The row
     differs from the row
     of the last visit of the same key, so each scene shows over many visits.
     Only the always-on hours walk all five in one run.
@@ -1535,7 +1566,7 @@ no season and shows the neutral scenes (see item 13).
     - 15 July: `midsummer`
     - 20 September: `harvest-festival`
     - 28 October: `spooky-season`
-    - 18 November: `late-autumn`, one of the seven Late Autumn scenes (129-23)
+    - 18 November: `late-autumn`, one of the eight Late Autumn scenes (129-23, 129-25)
     - 25 November: `black-week`, one of the nine Black Week scenes (129-22)
     - 10 December and 26 December: `christmas`, one of the seven Christmas
       scenes (129-19)

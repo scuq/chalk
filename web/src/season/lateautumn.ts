@@ -1,12 +1,11 @@
-// chalk-web -- 129-23: the seven late-autumn scenes.
+// chalk-web -- 129-23: the late-autumn scenes. 129-25: eight scenes.
 //
-// On 16 to 22 November, the "late-autumn" key shows one of these scenes. Each
-// scene is a nod to a film, a series, or a game, and a person knows it by one
-// moment in autumn. Five scenes nod to a film or a series, and two nod to a
-// game. A scene has no title, no logo, no lettering, and no likeness of an
-// actor. A character is generic. The only text is the CHALK sign. A scene is a
-// Script (strip.ts). scene.ts runs these scripts in place of rows for the
-// "late-autumn" key.
+// On 16 to 22 November, the "late-autumn" key shows one of these eight scenes.
+// Each scene is a nod to a film or a series, and a person knows it by one
+// moment in autumn. No scene nods to a game. A scene has no title, no logo, no
+// lettering, and no likeness of an actor. A character is generic. The only text
+// is the CHALK sign. A scene is a Script (strip.ts). scene.ts runs these
+// scripts in place of rows for the "late-autumn" key.
 
 import { disc, rnd, sign, stars, STRIP_H, type Alpha, type Px, type Script } from "./strip";
 
@@ -162,63 +161,6 @@ function duel(p: Px, a: Alpha, W: number, t: number): void {
   sign(p, W, "#e8e0d0", "#a81818", "#3a2418");
 }
 
-// Coffee and the Owl, a nod to Twin Peaks. In a dark pine forest, a figure in a
-// dark suit stands on a floor with a zigzag pattern. The figure holds a white
-// cup, and steam rises from it. From 5 s to 8 s the cup goes up to the face.
-// An owl sits on a branch and blinks. From 10 s to 13 s its eyes glow and a
-// yellow light shows around it. Bands of fog drift past. The loop is 16 s.
-function coffee(p: Px, a: Alpha, W: number, t: number): void {
-  const u = t % 16;
-  p(0, 0, W, H, "#0a120e");
-  for (let i = 0; i < 9; i++) {
-    const x = Math.round(i * W / 8) - 4;
-    for (let k = 0; k < 6; k++) p(x - k, 3 + k * 3, k * 2 + 1, 3, "#0e2418");
-    p(x, 2, 1, 18, "#1a1410");
-  }
-  p(0, 20, W, 4, "#140e0a");
-  for (let x = 0; x < W; x += 4) {
-    p(x, 22, 2, 1, "#e8e0d0");
-    p(x + 2, 23, 2, 1, "#e8e0d0");
-  }
-  const cx = Math.round(W * 0.36);
-  p(cx, 11, 2, 2, "#d8b090");
-  p(cx, 10, 2, 1, "#1a1410");
-  p(cx - 1, 13, 4, 5, "#1a1a20");
-  p(cx, 13, 2, 2, "#e8e8e0");
-  p(cx + 1, 14, 1, 2, "#202020");
-  p(cx, 18, 1, 2, "#1a1a20");
-  p(cx + 2, 18, 1, 2, "#1a1a20");
-  const sip = u > 5 && u < 8;
-  const cupX = cx + 3, cupY = sip ? 12 : 15;
-  p(cupX, cupY, 2, 2, "#f0f0f0");
-  p(cupX + 2, cupY, 1, 1, "#f0f0f0");
-  for (let i = 0; i < 3; i++) {
-    const sy = cupY - 1 - ((t * 3 + i) % 3);
-    p(cupX + Math.round(Math.sin(t * 3 + i)), Math.floor(sy), 1, 1, "rgba(240,240,240,0.5)");
-  }
-  const ox = Math.round(W * 0.72), oy = 7;
-  p(ox - 6, oy + 4, 14, 1, "#2a1a10");
-  p(ox, oy, 4, 4, "#6a5a4a");
-  p(ox, oy - 1, 1, 1, "#6a5a4a");
-  p(ox + 3, oy - 1, 1, 1, "#6a5a4a");
-  const blink = Math.floor(t * 1.5) % 5 === 0;
-  const glow = u > 10 && u < 13;
-  p(ox, oy + 1, 1, 1, blink ? "#6a5a4a" : glow ? "#ffe060" : "#e8c060");
-  p(ox + 3, oy + 1, 1, 1, blink ? "#6a5a4a" : glow ? "#ffe060" : "#e8c060");
-  if (glow) {
-    a(0.15);
-    p(ox - 3, oy - 2, 10, 7, "#ffe060");
-    a(1);
-  }
-  a(0.22);
-  for (let i = 0; i < 6; i++) {
-    const a = t * 0.6 + i;
-    p(Math.round(W * 0.5 + Math.cos(a) * W * 0.35), Math.round(15 + Math.sin(a * 1.3) * 3), 24, 2, "#a8b8b0");
-  }
-  a(1);
-  sign(p, W, "#0a120e", "#5a1a1a", "#e8e0d0");
-}
-
 // The Vineyard, a nod to Star Trek: The Next Generation. At dusk, a stone
 // château with lit windows stands on the left, and two rows of vines with
 // grapes sway in the wind. A bald man in a red and black uniform top, with a
@@ -323,160 +265,455 @@ function vineyard(p: Px, a: Alpha, W: number, t: number): void {
   sign(p, W, "#3a2e5a", "#a8582a", "#ffe0a0");
 }
 
-// Leaf Chase, a nod to Animal Crossing, a game. In a sunny meadow with five
-// orange trees, a villager with a round head, a blue shirt, and a red cap runs
-// after a falling leaf with a net. At 7.5 s the villager catches the leaf, and
-// yellow sparkles show until 9 s. Leaves fall through the strip. The loop is
-// 12 s.
-function leafChase(p: Px, _a: Alpha, W: number, t: number): void {
-  const u = t % 12;
-  p(0, 0, W, 14, "#a8d8f0");
-  p(0, 14, W, 10, "#8ac060");
-  p(0, 14, W, 1, "#a8d878");
-  for (let i = 0; i < 5; i++) broadTree(p, Math.round(W * (0.08 + i * 0.22)), 3 + (i % 2), 4, ["#f08a3a", "#f0b040", "#e05a2a"], "#8a5a3a");
-  for (let i = 0; i < 18; i++) p(Math.floor(rnd(i + 20) * W), 19 + Math.floor(rnd(i + 21) * 4), 2, 1, LEAF[i % 5]);
-  const lx = Math.round(W * 0.5 + Math.sin(u * 1.8) * W * 0.2 + (u / 12) * W * 0.1), ly = Math.min(15, Math.round(3 + u * 1.6));
-  const caught = u > 7.5;
-  if (!caught) {
-    p(lx, ly, 2, 2, "#e05a2a");
-    p(lx + 1, ly - 1, 1, 1, "#e05a2a");
-  }
-  const vx = Math.round(caught ? W * 0.5 + 4 : lx - 6 + Math.sin(t * 3) * 1), vy = 18;
-  disc(p, vx + 2, vy - 7, 2.5, "#f0d0a0");
-  p(vx + 1, vy - 7, 1, 1, "#202020");
-  p(vx + 3, vy - 7, 1, 1, "#202020");
-  p(vx, vy - 10, 5, 1, "#c84a2a");
-  p(vx, vy - 4, 5, 3, "#3a8ad8");
-  p(vx + 1, vy - 1, 1, 1, "#5a3a2a");
-  p(vx + 3, vy - 1, 1, 1, "#5a3a2a");
-  const net = caught ? 0 : Math.round(Math.sin(t * 6) * 2);
-  p(vx + 5, vy - 6 + net, 1, 5, "#8a6a3a");
-  disc(p, vx + 6, vy - 8 + net, 1.6, "#e8e8e8");
-  if (caught) {
-    p(vx + 6, vy - 9, 2, 2, "#e05a2a");
-    if (u < 9) for (let i = 0; i < 6; i++) p(vx + 4 + Math.floor(rnd(i + Math.floor(t * 8)) * 6), vy - 13 + Math.floor(rnd(i + 3) * 4), 1, 1, "#ffe060");
-  }
-  leaves(p, W, 5, 8, t, 2);
-  sign(p, W, "#fff4e0", "#e05a2a", "#8a5a3a");
+// 129-25: Returns the color between the hex colors a and b as an rgb() string.
+// f is the share of b, from 0 (a) to 1 (b). A value outside this range counts
+// as the nearest end.
+function mix(a: string, b: string, f: number): string {
+  const hex = (c: string) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16));
+  const A = hex(a), B = hex(b), k = Math.max(0, Math.min(1, f));
+  return "rgb(" + A.map((v, i) => Math.round(v + (B[i] - v) * k)).join(",") + ")";
+}
+// 129-25: Draws a line from x0, y0 to x1, y1 in the color c. The line has the
+// width of one pixel, and its ends are on the grid.
+function line(p: Px, x0: number, y0: number, x1: number, y1: number, c: string): void {
+  const n = Math.max(1, Math.abs(x1 - x0), Math.abs(y1 - y0));
+  for (let i = 0; i <= n; i++) p(Math.round(x0 + (x1 - x0) * i / n), Math.round(y0 + (y1 - y0) * i / n), 1, 1, c);
 }
 
-// The Raid, a nod to Fantastic Mr. Fox. On a farm at night, under a moon and
-// stars, three farm buildings stand in a row, and a window in each lights in
-// turn. Two lamp posts sweep light beams over the ground. An orange fox with a
-// white bundle runs to a hole in the ground. From 9 s to 10.5 s it jumps into
-// the hole, and earth flies up. The loop is 16 s.
-function raid(p: Px, a: Alpha, W: number, t: number): void {
-  const u = t % 16;
-  p(0, 0, W, H, "#0e1424");
-  stars(p, W, 101, Math.floor(W / 14), 10, t);
-  disc(p, Math.round(W * 0.1), 4, 2.5, "#f0ecd0");
-  p(0, 17, W, 7, "#2a3a1e");
-  p(0, 17, W, 1, "#3a4a24");
-  const sx = [0.35, 0.58, 0.8];
-  sx.forEach((f, i) => {
-    const x = Math.round(W * f);
-    p(x, 9, 14, 8, ["#6a2a1a", "#4a3a2a", "#5a4a3a"][i]);
-    for (let k = 0; k < 3; k++) p(x - 1 + k, 8 - k, 16 - k * 2, 1, "#3a2a1a");
-    p(x + 5, 13, 4, 4, "#1a1008");
-    if (Math.floor(t + i) % 3 === 0) p(x + 2, 11, 2, 2, "#e8c56a");
+// 129-25: One walker of Leaving the Valley. h is the height in pixels, and w is
+// the width of the body, 4 by default. body, skin, and hair are colors. The
+// optional fields add a hat, a helmet, a beard, a staff, a bow, or a shield.
+interface Walker {
+  h: number;
+  w?: number;
+  body: string;
+  skin: string;
+  hair: string;
+  hat?: string;
+  helm?: string;
+  beard?: string;
+  staff?: boolean;
+  bow?: boolean;
+  shield?: boolean;
+}
+// 129-25: Draws the walker o with its head at column x and its feet on row g. The
+// feet change place four times each second at time t. i shifts the step, so
+// two walkers do not step together.
+function walker(p: Px, x: number, g: number, o: Walker, t: number, i: number): void {
+  const w = o.w ?? 4, top = g - o.h, st = Math.floor(t * 4 + i) % 2;
+  if (o.staff) p(x + 3, top - 1, 1, o.h + 1, "#8a6a4a");
+  if (o.bow) p(x - 2, top + 1, 1, 5, "#9a7a3a");
+  p(x, top, 2, 2, o.skin);
+  p(x, top, 2, 1, o.hair);
+  if (o.hat) {
+    p(x - 1, top, 4, 1, o.hat);
+    p(x, top - 1, 2, 1, o.hat);
+    p(x + 1, top - 2, 1, 1, o.hat);
+  }
+  if (o.helm) p(x, top, 2, 1, o.helm);
+  p(x + 1 - Math.floor(w / 2), top + 2, w, o.h - 4, o.body);
+  if (o.beard) p(x, top + 2, 2, 2, o.beard);
+  if (o.shield) p(x - 2, top + 3, 2, 3, "#b89a4a");
+  p(x + st, g - 2, 1, 2, "#2a2018");
+  p(x + 2 - st, g - 2, 1, 2, "#2a2018");
+}
+// 129-25: The nine walkers of Leaving the Valley, in the order of the line. The
+// first one walks in front.
+const COMPANY: Walker[] = [
+  { h: 10, body: "#8a8a8a", skin: "#d8b8a0", hair: "#d0d0d0", hat: "#7a7a7a", staff: true },
+  { h: 6, w: 3, body: "#6a4a2a", skin: "#e0b890", hair: "#4a2a1a" },
+  { h: 6, w: 3, body: "#4a5a2a", skin: "#e0b890", hair: "#c89a5a" },
+  { h: 6, w: 3, body: "#7a5a3a", skin: "#e0b890", hair: "#6a4a2a" },
+  { h: 6, w: 3, body: "#5a4a3a", skin: "#e0b890", hair: "#3a2418" },
+  { h: 9, body: "#2e3a2a", skin: "#c8a080", hair: "#2a1e16" },
+  { h: 9, body: "#4a6a3a", skin: "#e8d0b0", hair: "#f0e0a0", bow: true },
+  { h: 6, w: 5, body: "#6a3a2a", skin: "#d8a888", hair: "#a84a1a", helm: "#8a8a90", beard: "#a84a1a" },
+  { h: 9, body: "#7a2a22", skin: "#d0a888", hair: "#6a4a2a", shield: true },
+];
+
+// Leaving the Valley, a nod to The Lord of the Rings: The Fellowship of the
+// Ring. At dusk, a pale hall with arches stands on the left of a valley with
+// two waterfalls and golden trees. Nine walkers leave the hall in a line: a
+// grey figure with a pointed hat and a staff, four small ones, a ranger, an
+// archer, a short bearded one in a helmet, and a man with a round shield. They
+// step up onto a stone bridge over a stream and walk out to the right. Gold
+// leaves fall. The loop is 20 s.
+function valley(p: Px, a: Alpha, W: number, t: number): void {
+  const u = t % 20;
+  ["#2e2a4a", "#4e3a5e", "#8a4e5e", "#c87a52", "#eaa862"].forEach((c, i) => p(0, i * 3, W, 3, c));
+  p(0, 15, W, 4, "#eaa862");
+  for (let x = 0; x < W; x++) {
+    const h = Math.round(8 + 3 * Math.sin(x * 0.031 + 0.5) + 1.5 * Math.sin(x * 0.13));
+    p(x, 19 - h, 1, h, "#4a3e56");
+  }
+  for (const f of [0.14, 0.88]) {
+    const wx = Math.round(W * f);
+    for (let y = 9; y < 19; y++) p(wx, y, 2, 1, ((Math.floor(y - t * 10) % 3) + 3) % 3 ? "#a8c4d8" : "#eaf4ff");
+  }
+  for (let x = 0; x < W; x++) {
+    const h = Math.round(3 + 1.5 * Math.sin(x * 0.05 + 2));
+    p(x, 19 - h, 1, h, "#3a3248");
+  }
+  const hx = Math.round(W * 0.02);
+  p(hx + 4, 5, 18, 2, "#cdbb98");
+  p(hx + 11, 3, 4, 2, "#cdbb98");
+  p(hx + 12, 2, 2, 1, "#cdbb98");
+  p(hx - 1, 7, 27, 1, "#d8c8a8");
+  for (let i = 0; i < 4; i++) {
+    const cx = hx + i * 6;
+    a(0.4);
+    p(cx + 1, 10, 5, 9, "#ffd890");
+    a(1);
+    p(cx + 1, 9, 1, 1, "#efe4c8");
+    p(cx + 2, 8, 2, 1, "#efe4c8");
+    p(cx + 4, 9, 1, 1, "#efe4c8");
+  }
+  for (let i = 0; i < 5; i++) p(hx + i * 6, 8, 1, 11, "#efe4c8");
+  for (const f of [0.34, 0.66, 0.78]) broadTree(p, Math.round(W * f), 7, 4, ["#e8b040", "#d8902a", "#f0c860"], "#4a3424");
+  p(0, 19, W, 5, "#3a3a22");
+  p(0, 19, W, 1, "#5a5a2e");
+  const sx = Math.round(W * 0.42), sw = 22;
+  p(sx, 19, sw, 5, "#4a6a88");
+  for (let i = 0; i < 3; i++) p(sx + 2 + ((Math.floor(t * 3) + i * 7) % (sw - 4)), 20 + i, 2, 1, "#8ab0c8");
+  p(sx - 3, 17, sw + 6, 2, "#d8c8a8");
+  p(sx - 3, 15, sw + 6, 1, "#efe4c8");
+  for (let k = 0; k <= sw + 6; k += 4) p(sx - 3 + k, 16, 1, 1, "#efe4c8");
+  p(sx + 2, 19, sw - 4, 1, "#3a5a78");
+  const lead = -6 + (u / 20) * (W + 80);
+  COMPANY.forEach((o, i) => {
+    const x = Math.round(lead - i * 7);
+    const onBridge = x >= sx - 3 && x <= sx + sw + 2;
+    walker(p, x, onBridge ? 17 : 19, o, t, i);
   });
-  const hx = Math.round(W * 0.2);
-  disc(p, hx, 19, 3, "#1a1008", 24);
-  const run = u < 9 ? u / 9 : 1;
-  const fx = Math.round(W * 0.62 - run * (W * 0.62 - hx));
-  const dive = u >= 9 && u < 10.5;
-  if (u < 9 || dive) {
-    const yy = dive ? 18 + Math.round((u - 9) * 4) : 18;
-    p(fx, yy - 6, 3, 2, "#d8641e");
-    p(fx - 1, yy - 7, 1, 1, "#d8641e");
-    p(fx + 2, yy - 7, 1, 1, "#d8641e");
-    p(fx, yy - 5, 1, 1, "#f0f0e8");
-    p(fx, yy - 4, 4, 3, "#8a5a2a");
-    p(fx + 4, yy - 3, 3, 1, "#d8641e");
-    p(fx + 6, yy - 3, 1, 1, "#f0f0e8");
-    p(fx + (Math.floor(t * 8) % 2), yy - 1, 1, 1, "#3a2010");
-    p(fx + 3 - (Math.floor(t * 8) % 2), yy - 1, 1, 1, "#3a2010");
-    if (u < 9) {
-      p(fx - 2, yy - 4, 2, 2, "#f0f0e8");
-      p(fx - 3, yy - 4, 1, 1, "#d82020");
+  leaves(p, W, 9, 10, t, 2);
+  sign(p, W, "#2e2a4a", "#c8a050", "#f0e0b0");
+}
+
+// The Leaf Pile, a nod to Peanuts. A kid in a yellow zigzag shirt rakes a pile
+// of leaves, and the pile grows from 0 s to 6 s. A white beagle lies on the
+// roof of a red doghouse. At 6 s it jumps down and runs, and at 7.8 s it dives
+// into the pile. The leaves burst and land. From 9 s the kid slumps and the
+// rake lies on the ground. The beagle rolls in the leaves until 10 s, walks
+// back from 10 s to 13 s, and lies on the roof again from 13.4 s. The loop is
+// 16 s.
+function leafPile(p: Px, _a: Alpha, W: number, t: number): void {
+  const u = t % 16;
+  p(0, 0, W, 16, "#a8d4ec");
+  p(0, 16, W, 8, "#7aa84a");
+  p(0, 16, W, 1, "#9ac060");
+  broadTree(p, Math.round(W * 0.1), 2, 5, ["#e8862a", "#f0b03a", "#d8562a"], "#6a4a2a");
+  broadTree(p, Math.round(W * 0.93), 3, 4, ["#e8862a", "#d8562a", "#c8902a"], "#6a4a2a");
+  for (let i = 0; i < 14; i++) p(Math.floor(rnd(i + 40) * W), 18 + Math.floor(rnd(i + 41) * 5), 2, 1, LEAF[i % 5]);
+  const dh = Math.round(W * 0.72);
+  p(dh, 13, 12, 7, "#c8282a");
+  p(dh + 4, 15, 4, 5, "#2a1a1a");
+  p(dh + 5, 14, 2, 1, "#2a1a1a");
+  for (let k = 0; k < 5; k++) p(dh - 1 + k, 12 - k, 14 - k * 2, 1, "#4a2a22");
+  const px = Math.round(W * 0.38);
+  const burstAt = 7.8, e = u - burstAt;
+  if (u < burstAt) {
+    const ph = 1 + Math.round(Math.min(1, u / 6) * 3);
+    for (let y = 0; y < ph; y++) {
+      const w = (ph - y) * 3 + 2;
+      for (let k = 0; k < w; k++) p(px - Math.floor(w / 2) + k, 19 - y, 1, 1, LEAF[(k + y * 2) % 5]);
+    }
+  } else {
+    for (let i = 0; i < 34; i++) {
+      const vx = (rnd(i + 70) - 0.5) * 26, vy = 6 + rnd(i + 71) * 9;
+      const land = (vy + Math.sqrt(vy * vy + 72)) / 18;
+      const s = Math.min(e, land);
+      const x = px + vx * s, y = 17 - vy * s + 9 * s * s;
+      p(Math.round(x), Math.min(19 + (i % 3), Math.round(y)), 1 + (i % 2), 1, LEAF[i % 5]);
     }
   }
-  if (dive) for (let i = 0; i < 8; i++) {
-    const e = u - 9;
-    p(Math.round(hx + (rnd(i) - 0.5) * 10 * e * 2), Math.round(17 - rnd(i + 1) * 8 * e + e * e * 6), 1, 1, "#5a3a1a");
+  const kx = px - 13, slump = u >= 9 ? 1 : 0;
+  p(kx - 1, 9 + slump, 4, 4, "#f0c8a0");
+  p(kx + 1, 9 + slump, 1, 1, "#6a4a2a");
+  p(kx + 2, 11 + slump, 1, 1, "#2a1a10");
+  p(kx - 1, 13 + slump, 4, 4 - slump, "#f0d020");
+  for (let k = 0; k < 4; k++) p(kx - 1 + k, 14 + slump + (k % 2), 1, 1, "#1a1a1a");
+  p(kx - 1, 17, 4, 1, "#2a2a2a");
+  p(kx, 18, 1, 2, "#f0c8a0");
+  p(kx + 2, 18, 1, 2, "#f0c8a0");
+  if (u < 9) {
+    const rk = u < 6 ? Math.round(Math.sin(t * 4) * 2) : 0;
+    line(p, kx + 3, 14, kx + 9 + rk, 19, "#8a6a3a");
+    p(kx + 8 + rk, 19, 3, 1, "#5a5a5a");
+    p(kx + 3, 14, 1, 1, "#f0c8a0");
+  } else {
+    p(kx + 4, 19, 8, 1, "#8a6a3a");
+    p(kx + 12, 19, 1, 1, "#5a5a5a");
+    p(kx + 3, 15 + slump, 1, 2, "#f0c8a0");
   }
-  const sweep = Math.sin(t * 0.8);
-  for (const f of [0.45, 0.85]) {
-    const lx = Math.round(W * f);
-    p(lx, 12, 2, 5, "#4a4a42");
-    p(lx, 11, 2, 1, "#2a2a2a");
-    for (let k = 0; k < 22; k++) {
-      a(0.2 * (1 - k / 22));
-      p(Math.round(lx - k + sweep * k * 0.6), 13 + Math.round(k * 0.2), 1, 1 + Math.floor(k / 6), "#fff3c4");
+  const lying = (x: number, y: number) => {
+    p(x, y - 1, 6, 2, "#f4f4f0");
+    p(x - 1, y - 2, 2, 2, "#f4f4f0");
+    p(x - 2, y - 2, 1, 1, "#1a1a1a");
+    p(x, y - 1, 1, 2, "#1a1a1a");
+    p(x + 1, y - 2, 1, 1, "#f4f4f0");
+    p(x + 4, y - 2, 1, 1, "#f4f4f0");
+  };
+  const stand = (x: number, y: number, run: boolean) => {
+    p(x, y - 3, 5, 2, "#f4f4f0");
+    p(x - 2, y - 5, 3, 3, "#f4f4f0");
+    p(x - 3, y - 4, 1, 1, "#1a1a1a");
+    p(x, y - 5, 1, 2, "#1a1a1a");
+    p(x + 5, y - 4, 1, 1, "#f4f4f0");
+    const s = run ? Math.floor(t * 10) % 2 : 0;
+    p(x + s, y - 1, 1, 1, "#f4f4f0");
+    p(x + 4 - s, y - 1, 1, 1, "#f4f4f0");
+  };
+  if (u < 6 || u >= 13.4) lying(dh + 3, 7);
+  else if (u < 6.5) stand(dh - 2, Math.round(8 + (u - 6) * 22), false);
+  else if (u < 7.3) stand(Math.round(dh - 2 - (u - 6.5) / 0.8 * (dh - 2 - (px + 8))), 20, true);
+  else if (u < burstAt) {
+    const f = (u - 7.3) / 0.5;
+    stand(Math.round(px + 8 - f * 8), Math.round(20 - Math.sin(f * Math.PI) * 8), false);
+  } else if (u < 10) lying(px - 2, 20 - Math.abs(Math.round(Math.sin(t * 9))));
+  else if (u < 13) stand(Math.round(px + (u - 10) / 3 * (dh - 2 - px)), 20, true);
+  else stand(dh - 2, Math.round(20 - (u - 13) / 0.4 * 12), false);
+  leaves(p, W, 11, 6, t * 0.7, 2);
+  sign(p, W, "#fff4e0", "#c8282a", "#3a2a1a");
+}
+
+// The Quiet Pond, a nod to Stargate SG-1. On an evening at a pond, a man in a
+// cap sits in a green and white folding chair with a fishing rod. A cooler
+// with a bottle stands beside him. A leaf falls from 2 s, lands on the water at
+// 5.5 s, and rings spread until 9 s. The bobber never moves. From 9 s to 11.5 s
+// he drinks from the bottle. No fish comes. The loop is 16 s.
+function pond(p: Px, a: Alpha, W: number, t: number): void {
+  const u = t % 16;
+  ["#5a6a9a", "#8a7aa0", "#c890a0", "#f0b08a"].forEach((c, i) => p(0, i * 4, W, 4, c));
+  for (let x = 0; x < W; x += 2) {
+    const h = Math.round(5 + 2 * Math.sin(x * 0.09) + Math.sin(x * 0.23) * 1.5);
+    p(x, 16 - h, 2, h, ["#7a4a22", "#5a4a22", "#8a5a24", "#3a4a22"][Math.floor(x / 7) % 4]);
+  }
+  p(0, 16, W, 8, "#4a6a2e");
+  p(0, 16, W, 1, "#6a8a3a");
+  broadTree(p, Math.round(W * 0.2), 4, 5, ["#d8762a", "#e8a03a", "#b8401e"]);
+  const qx = Math.round(W * 0.6), qw = Math.round(W * 0.3);
+  for (let y = 17; y < 23; y++) {
+    const d = (y - 19.5) / 3.2;
+    const w = Math.round(qw * Math.sqrt(Math.max(0, 1 - d * d)));
+    p(qx + Math.round((qw - w) / 2), y, w, 1, "#3a6a8a");
+  }
+  for (let i = 0; i < 4; i++) p(qx + Math.round(qw * (0.2 + i * 0.18) + Math.sin(t * 0.7 + i) * 2), 18 + (i % 3) * 1.5, 3, 1, "#6a9ab8");
+  const bx = qx + Math.round(qw * 0.3);
+  const lu = u - 2;
+  if (lu >= 0 && lu < 3.5) p(Math.round(bx + 9 + Math.sin(lu * 2.4) * 3), Math.round(lu / 3.5 * 19), 2, 1, "#e8a03a");
+  if (u >= 5.5 && u < 9) {
+    const r = (u - 5.5) * 3;
+    a(Math.max(0, 0.7 - (u - 5.5) * 0.2));
+    p(Math.round(bx + 9 - r), 19, 1, 1, "#a8d0e8");
+    p(Math.round(bx + 10 + r), 19, 1, 1, "#a8d0e8");
+    p(Math.round(bx + 9 - r * 0.6), 18, 1, 1, "#a8d0e8");
+    p(Math.round(bx + 10 + r * 0.6), 20, 1, 1, "#a8d0e8");
+    a(1);
+  }
+  if (u >= 5.5) p(bx + 9, 19, 2, 1, "#e8a03a");
+  const cx = qx - 14;
+  p(cx - 7, 17, 5, 3, "#3a6ac8");
+  p(cx - 7, 17, 5, 1, "#e8e8e8");
+  const sip = u >= 9 && u < 11.5;
+  if (!sip) p(cx - 5, 15, 1, 2, "#6a3a14");
+  p(cx - 1, 12, 2, 5, "#2a7a3a");
+  p(cx - 1, 13, 2, 1, "#e8e8e8");
+  p(cx - 1, 15, 2, 1, "#e8e8e8");
+  p(cx, 17, 6, 1, "#2a7a3a");
+  p(cx, 18, 1, 2, "#c8c8c8");
+  p(cx + 5, 18, 1, 2, "#c8c8c8");
+  p(cx + 1, 10, 3, 3, "#d8a888");
+  p(cx + 1, 9, 3, 1, "#4a5a3a");
+  p(cx + 4, 10, 1, 1, "#4a5a3a");
+  p(cx + 3, 11, 1, 1, "#2a1a10");
+  p(cx, 13, 4, 4, "#6a5a3a");
+  p(cx + 3, 16, 4, 1, "#3a4a5a");
+  p(cx + 6, 17, 1, 2, "#3a4a5a");
+  p(cx + 6, 19, 2, 1, "#2a1e14");
+  p(cx + 4, 14, 1, 1, "#6a5a3a");
+  p(cx + 5, 14, 1, 1, "#d8a888");
+  const tipX = cx + 15, tipY = 6;
+  line(p, cx + 5, 14, tipX, tipY, "#3a2a1a");
+  a(0.55);
+  line(p, tipX, tipY, bx, 17, "#f0f0f0");
+  a(1);
+  p(bx, 17, 1, 1, "#e02020");
+  p(bx, 18, 1, 1, "#f0f0f0");
+  if (sip) {
+    p(cx + 3, 12, 1, 2, "#6a5a3a");
+    p(cx + 4, 11, 1, 2, "#6a3a14");
+  }
+  leaves(p, W, 13, 7, t * 0.8, 2);
+  sign(p, W, "#5a6a9a", "#a8582a", "#f8e0b0");
+}
+
+// Tea on the Promenade, a nod to Star Trek: Deep Space Nine. In a station, two
+// round windows show stars that drift past. At a table sit a man with grey
+// ridged skin and a doctor in a black uniform with a blue-green shoulder. The
+// doctor sips from 5 s to 7 s. One autumn leaf floats across the station from
+// 3 s to 15 s. While the leaf is near the grey man, after 8 s, his brow goes up
+// by one pixel. The loop is 16 s.
+function promenade(p: Px, a: Alpha, W: number, t: number): void {
+  const u = t % 16;
+  p(0, 0, W, H, "#262a34");
+  for (let x = 6; x < W; x += 14) p(x, 0, 1, 19, "#323846");
+  p(0, 0, W, 1, "#3a4050");
+  for (const f of [0.18, 0.84]) {
+    const wx = Math.round(W * f), wy = 10;
+    disc(p, wx, wy, 9, "#5a606e");
+    disc(p, wx, wy, 8, "#04060c");
+    for (let i = 0; i < 16; i++) {
+      const k = i * 5 + f * 100, sp = 1 + rnd(k) * 3;
+      const sxr = Math.round((((rnd(k + 1) * 20 - t * sp) % 20) + 20) % 20 - 10), sy = Math.floor(rnd(k + 2) * 16) - 8;
+      if (sxr * sxr + sy * sy < 56) p(wx + sxr, wy + sy, sp > 2.5 ? 2 : 1, 1, sp > 2 ? "#ffffff" : "#8a9ab8");
+    }
+    p(wx, wy - 8, 1, 17, "#5a606e");
+  }
+  p(0, 19, W, 5, "#1a1c22");
+  p(0, 19, W, 1, "#d8903a");
+  const tx = Math.round(W * 0.6);
+  p(tx, 15, 9, 1, "#8a8e9a");
+  p(tx + 4, 16, 1, 3, "#5a5e6a");
+  p(tx + 2, 18, 5, 1, "#5a5e6a");
+  const lf = (u - 3) / 12;
+  const lx = Math.round(-3 + lf * (W + 6)), ly = Math.round(6 + Math.sin(u * 1.3) * 3);
+  const gx = tx - 5;
+  const brow = Math.abs(lx - gx) < 18 && u > 8 ? 1 : 0;
+  p(gx - 1, 9, 1, 3, "#1a1a1e");
+  p(gx, 8, 3, 1, "#1a1a1e");
+  p(gx, 9, 3, 3, "#8a929a");
+  p(gx + 2, 11, 1, 1, "#0a0a0a");
+  p(gx + 2, 10 - brow, 1, 1, "#4a5058");
+  p(gx - 1, 12, 1, 1, "#5a6068");
+  p(gx + 2, 12, 1, 1, "#5a6068");
+  p(gx - 1, 13, 4, 3, "#4a3a4a");
+  p(gx, 14, 2, 1, "#6a5a6a");
+  p(gx + 2, 16, 3, 1, "#2a2a30");
+  p(gx + 4, 17, 1, 2, "#2a2a30");
+  p(gx - 1, 16, 3, 3, "#5a5e6a");
+  const dx = tx + 11;
+  const sipping = u >= 5 && u < 7;
+  p(dx, 8, 3, 1, "#1a1410");
+  p(dx + 3, 9, 1, 2, "#1a1410");
+  p(dx, 9, 3, 3, "#a8784e");
+  p(dx, 11, 1, 1, "#0a0a0a");
+  p(dx - 1, 12, 5, 4, "#1a1a1e");
+  p(dx - 1, 12, 5, 1, "#3a9aa8");
+  p(dx - 3, 16, 3, 1, "#1a1a1e");
+  p(dx - 3, 17, 1, 2, "#1a1a1e");
+  p(dx + 1, 16, 3, 3, "#5a5e6a");
+  p(tx + 1, 14, 1, 1, "#e8e8e8");
+  if (sipping) {
+    p(dx - 2, 13, 1, 1, "#1a1a1e");
+    p(dx - 1, 11, 1, 1, "#e8e8e8");
+  } else p(tx + 7, 14, 1, 1, "#e8e8e8");
+  a(0.45);
+  for (let i = 0; i < 2; i++) {
+    p(tx + 1 + Math.round(Math.sin(t * 2 + i)), 13 - ((Math.floor(t * 2) + i) % 2), 1, 1, "#e8e8e8");
+    if (!sipping) p(tx + 7 + Math.round(Math.sin(t * 2 + i + 1)), 13 - ((Math.floor(t * 2) + i + 1) % 2), 1, 1, "#e8e8e8");
+  }
+  a(1);
+  if (u >= 3 && u < 15) {
+    p(lx, ly, 2, 1, "#d8642a");
+    p(lx + (Math.floor(t * 3) % 2), ly - 1, 1, 1, "#e8a03a");
+  }
+  sign(p, W, "#262a34", "#d8903a", "#e8e0c8");
+}
+
+// The Wait, a nod to Futurama. A small brown dog sits outside a pizzeria that
+// has a green and white striped awning and no lettering. A stranger walks past
+// from 2 s to 8 s. While the stranger is near, the dog lifts its head and wags.
+// The sky is day until 9 s, dusk from 9 s to 13 s, night from 13 s to 21 s, and
+// day again from 21 s to 24 s. The shop window and the door glass are lit until
+// 12 s and from 22 s. The street lamp is on from 10.5 s to 22 s. At night the
+// head of the dog drops by one pixel, stars show, and one upper window is lit.
+// Leaves gather around the dog as the loop goes on. The dog stays. The loop is
+// 24 s.
+function theWait(p: Px, a: Alpha, W: number, t: number): void {
+  const u = t % 24;
+  const DAY = "#9ac4e4", DUSK = "#e0905a", NIGHT = "#141a32";
+  const sky = u < 9 ? DAY : u < 11 ? mix(DAY, DUSK, (u - 9) / 2) : u < 13 ? mix(DUSK, NIGHT, (u - 11) / 2) : u < 21 ? NIGHT : mix(NIGHT, DAY, (u - 21) / 3);
+  const dark = u < 9 ? 0 : u < 13 ? (u - 9) / 4 * 0.6 : u < 21 ? 0.6 : 0.6 * (1 - (u - 21) / 3);
+  const lampOn = u >= 10.5 && u < 22;
+  const open = u < 12 || u >= 22;
+  p(0, 0, W, H, sky);
+  for (let i = 0; i < 14; i++) {
+    const bw = Math.floor(W / 13), bh = 6 + Math.floor(rnd(i + 60) * 8);
+    p(i * bw - 6, 19 - bh, bw - 2, bh, "#6a7a8a");
+  }
+  const sx = Math.round(W * 0.6), sw = 46;
+  p(sx, 5, sw, 14, "#9a4a32");
+  for (let y = 6; y < 19; y += 2) p(sx, y, sw, 1, "#8a4028");
+  p(sx - 1, 4, sw + 2, 1, "#6a3020");
+  for (let k = 0; k < 4; k++) p(sx + 4 + k * 11, 6, 4, 3, "#2a2a3a");
+  for (let k = 0; k < sw + 2; k += 2) p(sx - 1 + k, 10, 2, 2, (k / 2) % 2 ? "#f0f0e8" : "#2a7a3a");
+  p(sx + 3, 13, 22, 5, open ? "#e8b060" : "#2a2018");
+  p(sx + 3, 13, 22, 1, "#5a3020");
+  p(sx + 13, 13, 1, 5, "#5a3020");
+  const doorX = sx + 28;
+  p(doorX, 13, 7, 6, "#2a4a3a");
+  p(doorX + 5, 16, 1, 1, "#e8c050");
+  p(doorX + 2, 14, 3, 2, open ? "#e8b060" : "#1a2a22");
+  p(0, 19, W, 2, "#9a9a96");
+  p(0, 21, W, 1, "#6a6a66");
+  p(0, 22, W, 2, "#34343a");
+  const lx = sx + sw + 6;
+  p(lx, 8, 1, 11, "#3a3a3a");
+  p(lx - 2, 7, 4, 1, "#3a3a3a");
+  const walkX = Math.round(-4 + (u - 2) / 6 * (W + 8));
+  const passing = u >= 2 && u < 8;
+  if (passing) {
+    const st = Math.floor(t * 4) % 2;
+    p(walkX, 10, 2, 2, "#d8a888");
+    p(walkX, 10, 2, 1, "#4a2a1a");
+    p(walkX - 1, 12, 4, 5, "#4a5a7a");
+    p(walkX + st, 17, 1, 2, "#2a2a30");
+    p(walkX + 2 - st, 17, 1, 2, "#2a2a30");
+  }
+  const dgx = doorX + 10, g = 19;
+  const hopeful = passing && Math.abs(walkX - dgx) < 24;
+  const look = hopeful ? 1 : u >= 14 && u < 21 ? -1 : 0;
+  for (let i = 0; i < Math.floor(u / 1.6); i++) p(dgx - 10 + Math.floor(rnd(i + 90) * 22), 19 + (i % 2), 1 + (i % 2), 1, LEAF[i % 5]);
+  p(dgx + 1, g - 3, 3, 3, "#b07a3a");
+  p(dgx + 2, g - 2, 2, 2, "#9a6830");
+  p(dgx + 1, g - 1, 1, 1, "#d8a868");
+  p(dgx - 1, g - 5 - look, 3, 2, "#b07a3a");
+  p(dgx - 2, g - 4 - look, 1, 1, "#d8a868");
+  p(dgx - 2, g - 5 - look, 1, 1, "#1a1008");
+  p(dgx + 1, g - 6 - look, 1, 1, "#6a4020");
+  p(dgx, g - 5 - look, 1, 1, "#1a1008");
+  if (u < 2 || hopeful) p(dgx + 4, g - 2 - (Math.floor(t * 6) % 2), 1, 1, "#b07a3a");
+  else p(dgx + 4, g - 1, 2, 1, "#b07a3a");
+  if (dark > 0) {
+    a(dark);
+    p(0, 0, W, H, "#06081a");
+    a(1);
+  }
+  if (u >= 13 && u < 21) {
+    stars(p, W, 5, Math.floor(W / 20), 4, t);
+    p(sx + 15, 6, 4, 3, "#ffd890");
+  }
+  p(lx - 1, 8, 3, 1, lampOn ? "#ffe8a0" : "#8a8a8a");
+  if (lampOn) {
+    a(0.2);
+    for (let y = 9; y < 21; y++) {
+      const w = 3 + (y - 9) * 2;
+      p(lx - Math.floor(w / 2), y, w, 1, "#ffe0a0");
     }
     a(1);
   }
-  sign(p, W, "#0e1424", "#8a5a2a", "#f0c080");
+  leaves(p, W, 17, 7, t * 0.8, 1.5);
+  sign(p, W, "#2a3040", "#2a7a3a", "#f0e8d8");
 }
-
-// The Harvest Helpers, a nod to Stardew Valley, a game. On a farm in the light
-// of the evening, three rows of crops are in the soil: orange, yellow, and
-// purple. Each crop disappears at its own time between 4 s and 20 s. A
-// scarecrow waves its arms. Five small round helpers in different colors hop to
-// a crate on the right, and each one carries a crop until it reaches the crate.
-// Leaves fall through the strip. The loop is 24 s.
-function harvest(p: Px, _a: Alpha, W: number, t: number): void {
-  const u = t % 24;
-  p(0, 0, W, 12, "#f0c890");
-  p(0, 12, W, 12, "#6a4a2a");
-  disc(p, Math.round(W * 0.9), 6, 2.5, "#fff0c0");
-  for (let x = 0; x < W; x++) {
-    const h = Math.round(2 + Math.sin(x * 0.05));
-    p(x, 12 - h, 1, h, "#c8803a");
-  }
-  for (let r = 0; r < 3; r++) for (let x = 6 + (r % 2) * 4; x < W - 30; x += 8) {
-    const k = x + r * 50, taken = u > 4 + rnd(k) * 16;
-    p(x, 15 + r * 3, 4, 1, "#3a6a2a");
-    if (!taken) {
-      p(x + 1, 14 + r * 3, 2, 2, ["#e8701a", "#d8c040", "#a83a8a"][r]);
-    }
-  }
-  const sc = Math.round(W * 0.35);
-  p(sc, 6, 1, 14, "#6a4a2a");
-  const wave = Math.round(Math.sin(t * 0.9) * 1);
-  p(sc - 4, 9 + wave, 9, 1, "#6a4a2a");
-  p(sc - 1, 5, 3, 3, "#e8c060");
-  p(sc - 2, 4, 5, 1, "#8a5a2a");
-  p(sc - 2, 8, 5, 4, "#4a7ab8");
-  p(sc - 5, 8 + wave, 1, 2, "#e8c060");
-  p(sc + 5, 8 - wave, 1, 2, "#e8c060");
-  const cx = Math.round(W - 22);
-  p(cx, 15, 10, 6, "#8a5a2a");
-  p(cx, 14, 10, 1, "#a8703a");
-  p(cx + 4, 16, 2, 2, "#d8a020");
-  const cols = ["#4ad04a", "#d84ad8", "#ffd23a", "#4aa3ff", "#ff6a3a"];
-  for (let i = 0; i < 5; i++) {
-    const ph = ((u * 0.12 + i * 0.2) % 1);
-    const x = Math.round(10 + ph * (cx - 10)), hop = Math.abs(Math.round(Math.sin(t * 3.5 + i) * 2));
-    const y = 18 - hop;
-    p(x, y - 2, 3, 3, cols[i]);
-    p(x, y - 1, 1, 1, "#202020");
-    p(x + 2, y - 1, 1, 1, "#202020");
-    p(x + 1, y - 3, 1, 1, cols[i]);
-    if (ph < 0.9) p(x + 1, y - 5, 2, 2, ["#e8701a", "#d8c040", "#a83a8a"][i % 3]);
-  }
-  leaves(p, W, 7, 6, t * 0.6, 2);
-  sign(p, W, "#f0c890", "#8a5a2a", "#5a3a1a");
-}
-
 
 /** LATEAUTUMN holds the late-autumn scenes, in the order of rotation. Each name is unique. */
 export const LATEAUTUMN: Script[] = [
   { name: "The Thing in the Fog", period: 16, still: 10, draw: fogThing },
   { name: "The Duel in the Garden", period: 14, still: 6, draw: duel },
-  { name: "Coffee and the Owl", period: 16, still: 11, draw: coffee },
   { name: "The Vineyard", period: 24, still: 13.5, draw: vineyard },
-  { name: "Leaf Chase", period: 12, still: 8, draw: leafChase },
-  { name: "The Raid", period: 16, still: 9.3, draw: raid },
-  { name: "The Harvest Helpers", period: 24, still: 8, draw: harvest },
+  { name: "Leaving the Valley", period: 20, still: 9, draw: valley },
+  { name: "The Leaf Pile", period: 16, still: 8.5, draw: leafPile },
+  { name: "The Quiet Pond", period: 16, still: 10, draw: pond },
+  { name: "Tea on the Promenade", period: 16, still: 10.5, draw: promenade },
+  { name: "The Wait", period: 24, still: 16, draw: theWait },
 ];

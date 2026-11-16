@@ -245,7 +245,7 @@ Every change is in the client.
 
 ## Phase 129 — seasonal: IN PROGRESS, with recorded trade-offs
 
-129-1 … 129-24 are built. 129-25 onward is open. Record in [phases/PHASE-129-SEASONAL.md](phases/PHASE-129-SEASONAL.md).
+129-1 … 129-25 are built. 129-26 onward is open. Record in [phases/PHASE-129-SEASONAL.md](phases/PHASE-129-SEASONAL.md).
 An animated pixel scene peeks into the middle of the top header. Each of
 six season keys has five scenes, and the `christmas` key shows seven scripted
 scenes, which are nods to films and series (129-19). The `new-year` key also
@@ -276,10 +276,10 @@ while the chalk window has focus (129-16, 129-24).
 A phone in zuckermode shows the scene in a row above the conversation list
 (129-11). The classic phone layout and the header of a phone show no scene.
 A headed season demo in the ui-sweep skill shows one scene on a fake date (129-17).
-Open: 129-25 and later, which tune the five keys that have rows, one key in
+Open: 129-26 and later, which tune the five keys that have rows, one key in
 each slice, in this order: spring-bloom, green-season, midsummer,
-harvest-festival, spooky-season. Late Autumn runs seven scripted nods to films,
-series, and games (129-23).
+harvest-festival, spooky-season. Late Autumn runs eight scripted nods to films
+and series (129-23, 129-25).
 Open cleanup: the scene engine in `web/src/season/scene.ts` still has branches
 for snow roofs, snow on pines, frozen lakes, and chimney smoke. They key on
 `winterfest` and `new-year`, and no row reaches them now. The `late-autumn`
