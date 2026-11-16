@@ -889,8 +889,11 @@ The owner checked that the free macOS runners of GitHub offer Xcode 27.
 - `.gitignore` has the new entries `*.p8`, `*.p12`, `*.pfx`, `*.cer`, `*.mobileprovision`, and `*.provisionprofile`.
   `git check-ignore` matched an `AuthKey_*.p8` file in `ios/`.
 - `.github/workflows/ci.yml` has a new job `ios` on `macos-latest`.
-  It selects the newest `/Applications/Xcode_27*.app` and fails with a clear message if the image has none.
-  It picks the first available iPhone simulator and runs `xcodebuild test -project chalk.xcodeproj -scheme chalk -destination id=... CODE_SIGNING_ALLOWED=NO` in `ios/`.
+  The job has `continue-on-error: true`, so it never fails the workflow.
+  Its first step selects the newest `/Applications/Xcode_27*.app` and writes a notice with the version.
+  If the image has none, the step writes a warning and the tests do not run.
+  If the image has no iPhone simulator, that is also a warning.
+  Otherwise the job picks the first available iPhone simulator and runs `xcodebuild test -project chalk.xcodeproj -scheme chalk -destination id=... CODE_SIGNING_ALLOWED=NO` in `ios/`.
   It uses no secrets.
   Like every job in `ci.yml`, it runs only on manual dispatch (`workflow_dispatch`).
 - The scheme is not in the repository.

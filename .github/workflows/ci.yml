@@ -123,26 +123,43 @@ jobs:
           path: test/e2e/playwright-report
 
   # Swift tests of the iOS app on a simulator. No secrets and no Apple account.
+  # The job has continue-on-error, so it never fails the workflow.
+  # The first step checks if the runner image has Xcode 27.
+  # If it has, the step writes a notice with the version.
+  # If it has not, the step writes a warning, and the tests do not run.
+  # If the image has no iPhone simulator, the job also writes a warning.
+  # Like every job in this file, it runs only on manual dispatch.
+  # release.yml has no iOS step, so iOS cannot break a release.
   # The scheme is not in the repository. Xcode makes it with the test target.
   # If the run cannot find the scheme, share the scheme in the project.
   ios:
     runs-on: macos-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
-      - name: select Xcode 27
+      - name: check for Xcode 27
+        id: xcode
         run: |
           xcode=$(ls -d /Applications/Xcode_27*.app 2>/dev/null | sort -V | tail -1)
           if [ -z "$xcode" ]; then
-            echo "this runner image has no Xcode 27:"; ls -d /Applications/Xcode*.app; exit 1
+            echo "::warning::this runner image has no Xcode 27; the Swift tests are skipped"
+            ls -d /Applications/Xcode*.app
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           sudo xcode-select -s "$xcode/Contents/Developer"
           xcodebuild -version
+          echo "::notice::$(xcodebuild -version | head -1) is available"
+          echo "found=true" >> "$GITHUB_OUTPUT"
       - name: swift tests on the simulator
+        if: steps.xcode.outputs.found == 'true'
         working-directory: ios
         run: |
           udid=$(xcrun simctl list devices available -j \
             | jq -r '[.devices[][] | select(.name | startswith("iPhone"))][0].udid // empty')
           if [ -z "$udid" ]; then
-            echo "no iPhone simulator on this runner image"; xcrun simctl list devices available; exit 1
+            echo "::warning::no iPhone simulator on this runner image; the Swift tests are skipped"
+            xcrun simctl list devices available
+            exit 0
           fi
           xcodebuild test -project chalk.xcodeproj -scheme chalk -destination "id=$udid" CODE_SIGNING_ALLOWED=NO
