@@ -109,7 +109,8 @@ The only in-repo evidence about a WKWebView is the engine table in `docs/phases/
 That row is about macOS, not iOS.
 It says: "no `Notification`, no WebAuthn, no `setSinkId`".
 Do not assume that the iOS web view has the same limits.
-Slice 136-1 did not measure `Notification`, `PushManager`, or WebAuthn (see "Open measurements").
+Slice 136-1 measured `Notification` and `PushManager` in the iOS shell, and both are absent (see "Page facts").
+It did not test if WebAuthn works (see "Open measurement").
 
 ### Result of 136-1
 
@@ -174,33 +175,51 @@ Check the `Info.plist` of the built app before a device test.
 
 - Voice works in the foreground in both directions.
   The media went through TURN over TCP and ngrok.
-- App switch: the call continued with audio in both directions.
-  The WebSocket stayed connected, and chalkd logged no disconnect for the phone.
-- Screen lock: the same result.
+- App switch: the call was held for more than 5 min (09:48 to 09:53 local time) with audio in both directions.
+  The WebSocket stayed connected.
+  chalkd logged no disconnect for the phone's device from 09:41 on.
+- Screen lock: a separate clean run of 5 min had audio in both directions.
+  The WebSocket stayed connected, and chalkd logged no disconnect.
 - Incoming phone call: chalk audio came back after the user reopened the app.
   The owner accepts this.
 
 The gate passes, and the phase continues.
 The `audio` background mode was enough, so no fallback was necessary.
 
-#### Open measurements
+#### Page facts
 
-The owner has not measured these.
-No value is recorded for them.
+The owner read these values with Safari Web Inspector on the Mac.
+The shell sets `isInspectable`.
 
-- If the app-switch and screen-lock checks held for the full 5 min.
-  The owner reported only that they work.
-- The value of `"PushManager" in window` in the web view.
-- The value of `"Notification" in window` in the web view.
-- If WebAuthn works in the web view.
-  A failure would mostly reflect the missing Associated Domains capability of a Personal Team, not `WKWebView`.
-  The owner has not looked for that capability in the capability list of Xcode.
+- `"PushManager" in window` is false. The shell has no web push, as phase 65 expected.
+  The choice in 136-4 stands: a native APNs sender or no push.
+- `"Notification" in window` is false.
+- `!!window.PublicKeyCredential` is true. The WebAuthn API is present.
+- `navigator.userAgent` is `Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148`.
+  The OS version in the user agent is frozen at 18_7, but the phone runs iOS 27.2.1.
+  So the page cannot read the real iOS version from the user agent.
+  The user agent has no `Version/` token and no `Safari/` token, unlike Safari.
+  This difference is a side effect of the default user agent of `WKWebView`, not a deliberate mark.
+  Slice 136-3 still adds an explicit mark.
+
+These results are for the shell.
+The background behavior of the Home Screen web app is still unmeasured.
+
+#### Open measurement
+
+One measurement is open: if a passkey sign-in works in the web view.
+The owner did not try it.
+The API is present, but that does not show that a sign-in works.
+The free Personal Team has no Associated Domains capability, so a failure would not isolate `WKWebView`.
 
 ### 136-3 the page knows the shell
 
 The shell marks itself, with a user agent suffix or a script message handler.
 The page then hides the background notice in `web/src/components/PhoneCallSheet.tsx` and the Home Screen hint in `web/src/components/PushSettings.tsx`.
 Today `pushSupported` in `web/src/notify/push.ts` decides if push is offered.
+`pushSupported` is expected to be false in the shell, because `PushManager` is absent.
+This is not yet verified in the code.
+The Home Screen hint in `web/src/components/PushSettings.tsx` still needs to be hidden in the shell.
 If the socket closes in the background, this slice defines the fix.
 A grace period on the server is a possible fix and needs its own decision.
 The slice also handles an incoming phone call.
@@ -256,9 +275,10 @@ The list below is the design draft. The items about APNs and passkeys wait for 1
 
 - A Mac with Xcode: present.
 - A paid Apple Developer account: absent, and necessary from 136-5.
-- Background capture in the shell: works for app switch and screen lock on iOS 27.2.1. Measured in 136-1. The full 5 min is not measured.
+- Background capture in the shell: works for app switch and screen lock on iOS 27.2.1. Measured in 136-1, including a 5-min run of each.
 - Background capture in the Home Screen web app: unmeasured.
-- The behavior of passkeys, `Notification`, and `PushManager` in a web view on iOS: unmeasured (see "Open measurements").
+- `Notification` and `PushManager` in the shell: absent (see "Page facts").
+- Passkey sign-in in the shell: untried (see "Open measurement").
 - The iOS versions that matter: only iOS 27.2.1 was tested.
 
 ## Sources

@@ -579,8 +579,10 @@ same space.
 - **An iOS wrapper app** (136, [phases/PHASE-136-IOS.md](phases/PHASE-136-IOS.md)):
   in progress. Slice 136-1 is done (2026-11-16): on an iPhone, a call
   continued through an app switch and a screen lock in the shell, so the gate
-  passed. Open next: 136-2 (the shell), the open measurements (the full
-  5 min, `PushManager`, `Notification`, WebAuthn), and the idea in 136-3 to
+  passed. The call held for more than 5 min in each case, and
+  the shell has no `PushManager` and no `Notification`. Open next: 136-2 (the
+  shell), one open measurement (a passkey sign-in in the shell), 136-3 (hide
+  the Home Screen push hint in the shell), and the idea in 136-3 to
   mute the microphone and turn the camera off on a phone call. Installs that
   last longer than 7 days need a paid Apple Developer account. In the Home
   Screen web app the call still pauses in the background, and the call view
