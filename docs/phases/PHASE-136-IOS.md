@@ -4,7 +4,7 @@ A plan for a small iPhone app that wraps the chalk web page.
 The goal is that a voice call continues when the user switches apps or locks the screen.
 The design was written on 14 November 2026.
 
-**Status: in progress.** Slice 136-1 is built and measured on a device (2026-11-16). The gate passed. Slice 136-2 is built and checked on a device (2026-11-16), with two checks open. A follow-up of 136-2 has a device check open. Slice 136-4 is split into four parts. Parts 136-4a, 136-4b, and 136-4c are built (2026-11-16). Part 136-4d is built in parts 1, 2, and 3. Part 3 is checked on a device. Slice 136-3 is built and checked on a device (2026-11-16), with two details open. Slice 136-5a is built (2026-11-16). Slices 136-5b, 136-5c, and 136-6 are not started.
+**Status: in progress.** Slice 136-1 is built and measured on a device (2026-11-16). The gate passed. Slice 136-2 is built and checked on a device (2026-11-16), with two checks open. A follow-up of 136-2 has a device check open. Slice 136-4 is split into four parts. Parts 136-4a, 136-4b, and 136-4c are built (2026-11-16). Part 136-4d is built in parts 1, 2, and 3. Part 3 is checked on a device. Slice 136-3 is built and checked on a device (2026-11-16), with two details open. Slice 136-5a is built (2026-11-16). Slice 136-5b: first upload done (2026-11-16), internal TestFlight test open. Slices 136-5c and 136-6 are not started.
 **Tag:** `#ios` → `tools/where.sh -g ios` (this file and the `ios/` directory).
 
 Decisions from the owner:
@@ -94,9 +94,9 @@ Slices 136-1, 136-2, and 136-3 are built, and 136-4a, 136-4b, and 136-4c are bui
 | 136-4b | Device rows, a sealed WebSocket frame, fan-out from the dispatcher, chalkd builds the sender. No account needed. | built, 2026-11-16 |
 | 136-4c | chalkctl support for the key, and the `docs/deployment.md` env table. No account needed. | built, 2026-11-16 |
 | 136-4d | Shell registration, the bridge, the extension, the tap, a device test. Part 1 needs no account. Parts 1 and 2 need no account. The rest needs the paid account. | parts 1, 2, and 3 built, 2026-11-16. Part 3 checked on a device. |
-| 136-5 | Distribution through TestFlight. Three parts. See below. | 136-5a built, 2026-11-16. 136-5b and 136-5c not started. |
+| 136-5 | Distribution through TestFlight. Three parts. See below. | 136-5a built, 2026-11-16. 136-5b: first upload done. The internal TestFlight test is open. 136-5c not started. |
 | 136-5a | Release preparation: Web Inspector in Debug only, deployment target 17.0, ignore rules, a CI job for the Swift tests, the export compliance record. No account needed. | built, 2026-11-16 |
-| 136-5b | The first upload to App Store Connect from the Mac of the owner. Needs the paid account. | not started |
+| 136-5b | The first upload to App Store Connect from the Mac of the owner. Needs the paid account. | first upload done. The internal TestFlight test is open. |
 | 136-5c | A GitHub release job that uploads each tagged build. Needs the paid account. | not started |
 | 136-6 | Optional: lock-screen call controls and audio route selection. Use CallKit only if a later iOS version removes the conflict. | not started |
 
@@ -976,7 +976,7 @@ The slice has three parts. Part a needs no account and is built.
 | Part | Content | Needs the account | Status |
 | --- | --- | --- | --- |
 | 136-5a | Release preparation. | no | built, 2026-11-16 |
-| 136-5b | The first upload from the Mac of the owner. | yes | not started |
+| 136-5b | The first upload from the Mac of the owner. | yes | first upload done. The internal TestFlight test is open. |
 | 136-5c | A GitHub release job. | yes | not started |
 
 On 16 November 2026 the owner decided: the first upload is done locally from the Mac, and the GitHub release job comes later.
@@ -1013,11 +1013,13 @@ The owner checked that the free macOS runners of GitHub offer Xcode 27.
 #### Export compliance
 
 Decision of the owner, 16 November 2026: answer 2, standard encryption algorithms in addition to those of the operating system.
-`ios/Info.plist` has `ITSAppUsesNonExemptEncryption` set to `true`.
+`ios/Info.plist` has no encryption key. App Store Connect asks the encryption questions in the browser for each build. See "First upload failure" below.
 This section is not legal advice. The facts below come from Apple and the US rules, as the owner described them.
 Check each fact in App Store Connect when the question appears.
 
-App Store Connect asks about encryption for every build, unless `ITSAppUsesNonExemptEncryption` is in `Info.plist`.
+App Store Connect asks about encryption for every build, because `Info.plist` has no `ITSAppUsesNonExemptEncryption` key.
+In TestFlight, a new build shows "Missing Compliance". Select **Manage** and answer the questions.
+Answer 2, as decided.
 
 What the app binary contains:
 
@@ -1033,12 +1035,30 @@ What the web client does:
 - All algorithms are standard ones. Nothing is proprietary.
 - The main purpose of the app is end-to-end encrypted chat.
 
+#### First upload failure
+
+The first upload of version 0.12.5 (build 1 or 2) failed on 16 November 2026 with this message:
+"Invalid Export Compliance Code. The export compliance key value [] in the app's Info.plist doesn't match the key value of the app's export compliance documentation."
+
+The cause: `ITSAppUsesNonExemptEncryption` set to `true` tells Apple that approved export compliance documentation exists.
+Apple then requires `ITSEncryptionExportComplianceCode` with the code that App Store Connect issues after it approves that documentation.
+The app has no such code.
+
+The fix: the key `ITSAppUsesNonExemptEncryption` was removed from `ios/Info.plist`.
+The decision of the owner did not change. Only the place of the answer changed, from `Info.plist` to the browser.
+After the fix, the upload succeeded.
+
+Follow-up, optional: submit App Encryption Documentation in App Store Connect (App Information).
+If Apple approves it and issues a code, put both keys into `Info.plist`: `ITSAppUsesNonExemptEncryption` set to `true`, and `ITSEncryptionExportComplianceCode` with the code.
+The per-build question then goes away.
+Do not set `ITSAppUsesNonExemptEncryption` to `true` without the code.
+
 The rejected option was answer 1: only encryption inside the operating system of Apple, or an exempt use.
 It sets the key to `false` and needs no documents.
 
 Open steps for the owner. Each one is a check, not a legal claim:
 
-- On the first upload, App Store Connect asks follow-up questions about the encryption. Answer them in line with the decision.
+- For each build, App Store Connect asks the encryption questions in the browser. Answer them in line with the decision.
 - The US export rules usually mean an annual self-classification report for mass-market encryption. Check what applies and when it is due.
 - Apple can ask about distribution in France. Check that question when it comes.
 
@@ -1073,7 +1093,11 @@ It loses the Archive button of Xcode for the local upload.
 
 #### 136-5b: the first upload from the Mac
 
-Needs the paid account. The steps of the owner:
+Needs the paid account.
+The first upload of version 0.12.5 succeeded on 16 November 2026, after the fix in "First upload failure".
+TestFlight processing of the build and the internal test are not done.
+
+The steps of the owner:
 
 1. Select the team in Xcode.
 2. Make the App ID.

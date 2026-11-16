@@ -615,10 +615,13 @@ same space.
   uploads the registration again after each welcome). The rule that chalkd sends no push to a user
   with a device online stays per user, so an online desktop suppresses the push to the phone.
   While Xcode is attached, a swipe does not close the connection of the app, so the server keeps the
-  user online. Open for the account: 136-5b the first upload, 136-5c the GitHub release job, the Beta App Review sign-in decision (the reviewer needs a TOTP
+  user online. The first upload (136-5b) succeeded on 16 November 2026. Open for the account: the TestFlight processing and the internal TestFlight test of 136-5b. Also open: 136-5c the GitHub release job, the Beta App Review sign-in decision (the reviewer needs a TOTP
   code), and the device checks. The export compliance decision is made (2026-11-16, standard
-  encryption, `ITSAppUsesNonExemptEncryption` set to `true`). Open owner steps: answer the
-  App Store Connect follow-up questions on the first upload in line with it, check the
+  encryption). `ios/Info.plist` has no `ITSAppUsesNonExemptEncryption` key, because the first upload
+  failed with it set to `true` and no code. Open owner steps: answer the
+  encryption questions in App Store Connect for each build in line with the decision. Optional follow-up:
+  if App Encryption Documentation (App Information) yields an approved code, put
+  `ITSAppUsesNonExemptEncryption` set to `true` and `ITSEncryptionExportComplianceCode` into `Info.plist`, and the per-build question goes away. Also check the
   annual self-classification report for mass-market encryption (what applies and when it is
   due), and check the question about distribution in France when Apple asks. Installs that last
   longer than 7 days need it too. In the Home

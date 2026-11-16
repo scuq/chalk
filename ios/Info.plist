@@ -14,7 +14,5 @@
 	<string>chalk uses the microphone for voice calls.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>chalk uses the camera for video calls.</string>
-	<key>ITSAppUsesNonExemptEncryption</key>
-	<true/>
 </dict>
 </plist>
