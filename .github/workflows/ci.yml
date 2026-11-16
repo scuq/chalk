@@ -121,3 +121,28 @@ jobs:
         with:
           name: playwright-report
           path: test/e2e/playwright-report
+
+  # Swift tests of the iOS app on a simulator. No secrets and no Apple account.
+  # The scheme is not in the repository. Xcode makes it with the test target.
+  # If the run cannot find the scheme, share the scheme in the project.
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: select Xcode 27
+        run: |
+          xcode=$(ls -d /Applications/Xcode_27*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$xcode" ]; then
+            echo "this runner image has no Xcode 27:"; ls -d /Applications/Xcode*.app; exit 1
+          fi
+          sudo xcode-select -s "$xcode/Contents/Developer"
+          xcodebuild -version
+      - name: swift tests on the simulator
+        working-directory: ios
+        run: |
+          udid=$(xcrun simctl list devices available -j \
+            | jq -r '[.devices[][] | select(.name | startswith("iPhone"))][0].udid // empty')
+          if [ -z "$udid" ]; then
+            echo "no iPhone simulator on this runner image"; xcrun simctl list devices available; exit 1
+          fi
+          xcodebuild test -project chalk.xcodeproj -scheme chalk -destination "id=$udid" CODE_SIGNING_ALLOWED=NO

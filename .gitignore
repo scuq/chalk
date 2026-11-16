@@ -76,3 +76,12 @@ desktop/out/
 
 # Windows code-signing material from tools/make-signing-cert.sh -- never commit
 /signing/
+
+# Apple and code-signing material: keys, certificates and profiles never go
+# into the repository
+*.p8
+*.p12
+*.pfx
+*.cer
+*.mobileprovision
+*.provisionprofile

@@ -49,7 +49,10 @@ struct ChalkWebView: UIViewRepresentable {
         }
 
         func configure(_ view: WKWebView) {
+            // Web Inspector only in Debug builds. A TestFlight or App Store build must not be inspectable.
+            #if DEBUG
             view.isInspectable = true
+            #endif
             view.navigationDelegate = self
             view.uiDelegate = self
             view.allowsBackForwardNavigationGestures = false
