@@ -4,12 +4,12 @@ A plan for a small iPhone app that wraps the chalk web page.
 The goal is that a voice call continues when the user switches apps or locks the screen.
 The design was written on 14 November 2026.
 
-**Status: in progress.** Slice 136-1 is built and measured on a device (2026-11-16). The gate passed. Slice 136-2 is built and checked on a device (2026-11-16), with two checks open. A follow-up of 136-2 has a device check open. Slice 136-4 is split into four parts: 136-4a, 136-4b, and 136-4c are built (2026-11-16) and the part 136-4d is not started. Slice 136-3 is built and checked on a device (2026-11-16), with two details open. Slices 136-5 and 136-6 are not started.
+**Status: in progress.** Slice 136-1 is built and measured on a device (2026-11-16). The gate passed. Slice 136-2 is built and checked on a device (2026-11-16), with two checks open. A follow-up of 136-2 has a device check open. Slice 136-4 is split into four parts: 136-4a, 136-4b, and 136-4c are built (2026-11-16), and the part 136-4d is built in part 1 only. Slice 136-3 is built and checked on a device (2026-11-16), with two details open. Slice 136-5a is built (2026-11-16). Slices 136-5b, 136-5c, and 136-6 are not started.
 **Tag:** `#ios` → `tools/where.sh -g ios` (this file and the `ios/` directory).
 
 Decisions from the owner:
 
-- The owner has a Mac. The owner will buy a paid Apple Developer account, and it is not active yet (decision of 16 November 2026). Slices 136-4a to 136-4c need no account. Slice 136-4d and slice 136-5 need it.
+- The owner has a Mac. The owner will buy a paid Apple Developer account, and it is not active yet (decision of 16 November 2026). Slices 136-4a to 136-4c, part 1 of 136-4d, and 136-5a need no account. The rest of 136-4d, 136-5b, and 136-5c need it.
 - The app is for the owner and the users of the owner's server. It is not a public App Store listing.
 - Push in the shell: chalkd gets a native APNs sender, and Apple sees only ciphertext (decision of 16 November 2026). See 136-4.
 - Distribution: TestFlight with a public link for the users of the owner's server (decision of 16 November 2026). See 136-5.
@@ -89,12 +89,15 @@ Slices 136-1, 136-2, and 136-3 are built, and 136-4a, 136-4b, and 136-4c are bui
 | 136-1 | Device test, the gate for the phase. See below. | done, 2026-11-16 |
 | 136-2 | The shell: server address screen, navigation rule, permission grant, safe areas, file download, app icon. | built, 2026-11-16. Open: the Settings toggle and the print window. See below. |
 | 136-3 | The web client knows the shell, and mutes on a phone call. See below. | built and checked on a device, 2026-11-16. Checks (d) and (e) open. |
-| 136-4 | Notifications in the shell: an APNs sender in chalkd. Four parts. See below. | 136-4a, 136-4b, and 136-4c built, 2026-11-16. 136-4d not started. |
+| 136-4 | Notifications in the shell: an APNs sender in chalkd. Four parts. See below. | 136-4a, 136-4b, and 136-4c built, 2026-11-16. 136-4d part 1 built, 2026-11-16. The rest of 136-4d needs the account. |
 | 136-4a | APNs sender package, provider token, config parsing. No account needed. | built, 2026-11-16 |
 | 136-4b | Device rows, a sealed WebSocket frame, fan-out from the dispatcher, chalkd builds the sender. No account needed. | built, 2026-11-16 |
 | 136-4c | chalkctl support for the key, and the `docs/deployment.md` env table. No account needed. | built, 2026-11-16 |
-| 136-4d | Shell registration, the bridge, the extension, the tap, a device test. Needs the paid account. | not started |
-| 136-5 | Distribution through TestFlight. Needs the paid account. See below. | not started |
+| 136-4d | Shell registration, the bridge, the extension, the tap, a device test. Part 1 needs no account. The rest needs the paid account. | part 1 built, 2026-11-16. The rest not started. |
+| 136-5 | Distribution through TestFlight. Three parts. See below. | 136-5a built, 2026-11-16. 136-5b and 136-5c not started. |
+| 136-5a | Release preparation: Web Inspector in Debug only, deployment target 17.0, ignore rules, a CI job for the Swift tests, export compliance facts. No account needed. | built, 2026-11-16 |
+| 136-5b | The first upload to App Store Connect from the Mac of the owner. Needs the paid account. | not started |
+| 136-5c | A GitHub release job that uploads each tagged build. Needs the paid account. | not started |
 | 136-6 | Optional: lock-screen call controls and audio route selection. Use CallKit only if a later iOS version removes the conflict. | not started |
 
 ### 136-1 device test
@@ -464,7 +467,7 @@ Another chalk server that a user enters on the server screen gets no native push
 | 136-4a | APNs sender package, provider token, config parsing. | no | built, 2026-11-16 |
 | 136-4b | Device rows (a migration). A sealed WebSocket frame that carries the device token, the public key, and the authentication secret. Fan-out to both senders from the dispatcher, reminders included. chalkd builds the sender at start. | no | built, 2026-11-16 |
 | 136-4c | chalkctl: set the key that the operator supplies, keep it on `--force`, backfill it on `update`, and carry it on restore. The env table in `docs/deployment.md`. | no | built, 2026-11-16 |
-| 136-4d | Shell: registration for remote notifications, and a bridge that hands the token and the key to the page. The extension that decrypts. A tap that opens the channel. A device test. It needs the Push capability, an app group, and an extension target. | yes | not started |
+| 136-4d | Shell: registration for remote notifications, and a bridge that hands the token and the key to the page. The extension that decrypts. A tap that opens the channel. A device test. It needs the Push capability, an app group, and an extension target. | part 1 no, the rest yes | part 1 built, 2026-11-16. The rest not started. |
 
 The env table in `docs/deployment.md` lists the variables since 136-4c.
 
@@ -717,14 +720,163 @@ Limits of 136-4c:
 - No real chalkctl ran as root, and no real Apple key was used.
 - Verification: `go test ./internal/chalkctl/` passes.
 
+#### Result of 136-4d, part 1
+
+Part 1 is the receiver side of the push crypto and the payload text. No account is needed, and the Swift tests run on the simulator.
+
+- `ios/chalk/PushCrypto.swift` is new.
+  `PushCrypto.decrypt(body, privateKey, auth)` is the receiver side of RFC 8291 (`aes128gcm`, one record) with CryptoKit only.
+  It reads the header (salt, `rs`, key id length, sender key) and does the P-256 ECDH.
+  It derives the key and the nonce with HKDF-SHA256.
+  It opens the record with AES-128-GCM, removes the zero padding, and requires the `0x02` delimiter of the last record.
+  It is the counterpart of `internal/webpush/encrypt.go`, which chalkd uses for web push and for APNs.
+- The errors are `tooShort`, `header`, `key`, `open`, and `delimiter`.
+  `header` means a key id length not 65, a record longer than `rs`, or `rs` less than 18.
+  `key` means a sender point that is not valid.
+  `open` means a wrong key, a wrong auth secret, or a changed byte.
+- `ios/chalk/PushContent.swift` is new.
+  `PushContent.from(payload:)` turns the decrypted JSON into a title, a body, a thread id, a badge, and the open target (channel, thread, or reminder).
+  The thread id groups notifications like the tag of a web notification.
+  The wording is the same as `notificationFor` in `web/src/sw-logic.ts`.
+  The texts are "@alice in #general", "@bob" for a direct message, "someone", "New message", "New reply in a thread", and "Reminder: a message is due".
+  An unknown or malformed payload gives `PushContent.fallback`, with the title "chalk" and the body "New notification".
+  This is the same constant text that chalkd puts in the APNs alert (`internal/apns`).
+- Channel, message, thread, and reminder ids must be UUIDs.
+  This is stricter than the web, because the extension builds the address that it opens from them.
+- `ios/chalkTests/PushTests.swift` is new.
+  The RFC 8291 Appendix A vector decrypts to "When I grow up, I want to be a watermelon".
+  The test checks first that the receiver key derives the public key of the RFC.
+  A padded push like the one from chalkd round-trips through a test-only sender.
+  The plaintext has 1024 bytes, and the body has 21 + 65 + 1024 + 16 bytes.
+  The tests refuse each of these cases:
+  a changed byte, a wrong key, a wrong auth secret, a short body, and a missing delimiter.
+  They also refuse a bad key id length and a bad sender point.
+  The content cases cover a channel message, a direct message, a thread reply, a reminder, and the fallback.
+- The Swift tests pass on the simulator: 23 of 23.
+
+Not done in part 1, because it needs the paid account:
+
+- The Notification Service Extension target.
+- The app group and the keychain sharing for the key pair.
+- The registration for remote notifications.
+- The bridge from the shell to the page.
+- The page that sends `push_subscribe_apns`.
+- The open on a tap.
+
 ### 136-5 distribution
 
 Free signing expires after 7 days, so it served 136-1 only.
 The owner decided on 16 November 2026 to distribute the app through TestFlight, with a public link for the users of the owner's server.
 This needs the paid Apple Developer account, which is not active yet.
-Nothing in this slice is built.
+The slice has three parts. Part a needs no account and is built.
 
-#### Plan
+| Part | Content | Needs the account | Status |
+| --- | --- | --- | --- |
+| 136-5a | Release preparation. | no | built, 2026-11-16 |
+| 136-5b | The first upload from the Mac of the owner. | yes | not started |
+| 136-5c | A GitHub release job. | yes | not started |
+
+On 16 November 2026 the owner decided: the first upload is done locally from the Mac, and the GitHub release job comes later.
+The owner checked that the free macOS runners of GitHub offer Xcode 27.
+
+#### Result of 136-5a
+
+- Web Inspector is Debug only.
+  `isInspectable = true` in `ios/chalk/ChalkWebView.swift` is inside `#if DEBUG`.
+  The Release binary has no `setInspectable` selector, and the Debug binary has it.
+  A TestFlight or App Store build cannot be inspected with Safari Web Inspector.
+- The deployment target is 17.0 (`IPHONEOS_DEPLOYMENT_TARGET`, before 27.2).
+  17.0 is the floor, because the app uses `@Observable`, `@Bindable`, and the two-parameter `onChange`, which need iOS 17.
+  An unsigned Release build for devices succeeds, and its `MinimumOSVersion` is 17.0.
+- Not measured: background audio, the marker, the call observer, and the rest on iOS 17 to 27.1.
+  The checks of 136-1 and later ran on iOS 27.2.1 only.
+  A device or a simulator with an older iOS must run the device checklists before the app is offered to users of those versions.
+- `.gitignore` has the new entries `*.p8`, `*.p12`, `*.pfx`, `*.cer`, `*.mobileprovision`, and `*.provisionprofile`.
+  `git check-ignore` matched an `AuthKey_*.p8` file in `ios/`.
+- `.github/workflows/ci.yml` has a new job `ios` on `macos-latest`.
+  It selects the newest `/Applications/Xcode_27*.app` and fails with a clear message if the image has none.
+  It picks the first available iPhone simulator and runs `xcodebuild test -project chalk.xcodeproj -scheme chalk -destination id=... CODE_SIGNING_ALLOWED=NO` in `ios/`.
+  It uses no secrets.
+  Like every job in `ci.yml`, it runs only on manual dispatch (`workflow_dispatch`).
+- The scheme is not in the repository.
+  Xcode makes it with the test target, which is also how the local runs work.
+  If the first GitHub run cannot find the scheme, share the scheme in the project.
+- The same unsigned command passed on the Mac of the owner.
+  The job itself has not run on GitHub.
+
+#### Export compliance (preparation)
+
+This is preparation only. It is not legal advice. The owner decides, possibly with advice.
+The facts below come from Apple and the US rules, as the owner described them.
+Check each fact in App Store Connect when the question appears.
+
+App Store Connect asks about encryption for every build, unless `ITSAppUsesNonExemptEncryption` is in `Info.plist`.
+
+What the app binary contains:
+
+- In 136-1 to 136-3, no own crypto implementation. HTTPS goes through WebKit, which is part of the operating system.
+- From 136-4d, the notification extension decrypts pushes with CryptoKit, which is part of the operating system.
+  It uses P-256 ECDH, HKDF-SHA256, and AES-128-GCM.
+
+What the web client does:
+
+- The web client is downloaded from the server of the user at run time. It is not part of the binary.
+- It uses AES-GCM, ECDH and X25519, Ed25519, HKDF, and SHA through WebCrypto, which WebKit provides, so the operating system provides it.
+- It uses Argon2id through hash-wasm. This is WebAssembly. The algorithm is a standard one, and the operating system does not provide it.
+- All algorithms are standard ones. Nothing is proprietary.
+- The main purpose of the app is end-to-end encrypted chat.
+
+The two candidate answers:
+
+1. Only encryption inside the operating system of Apple, or an exempt use.
+   Set `ITSAppUsesNonExemptEncryption` to `NO`. No documents follow.
+2. Standard encryption algorithms in addition to those of the operating system.
+   Set `ITSAppUsesNonExemptEncryption` to `YES`.
+   For the US export rules this usually means an annual self-classification report for mass-market encryption.
+   Apple can also ask about distribution in France.
+
+End-to-end encrypted messengers commonly give answer 2.
+The code that arrives at run time from the server does not obviously change what the app does for the user.
+
+Prepared lines for `ios/Info.plist`. Nothing is added until the owner decides.
+
+For answer 1:
+
+```xml
+<key>ITSAppUsesNonExemptEncryption</key>
+<false/>
+```
+
+For answer 2:
+
+```xml
+<key>ITSAppUsesNonExemptEncryption</key>
+<true/>
+```
+
+#### Open decision: Beta App Review sign-in
+
+The reviewer of Beta App Review must sign in to the app, and chalk asks for a TOTP code at every login.
+These are the options:
+
+- A review account on the server, with its TOTP secret in the review notes.
+- A separate review server.
+
+This decision blocks the external tester group. It does not block internal testing.
+
+#### 136-5b: the first upload from the Mac
+
+Needs the paid account. The steps of the owner:
+
+1. Select the team in Xcode.
+2. Make the App ID.
+3. Download the APNs key. Apple allows the download once, so keep the file safe.
+4. Run `chalkctl push apns set` with the key.
+5. Make the app record in App Store Connect. The name must be unique on the App Store.
+6. In Xcode, choose Archive, then Distribute, then App Store Connect.
+7. Test with TestFlight internal testers first.
+
+#### 136-5c: the GitHub release job
 
 - A new `ios` job in `.github/workflows/release.yml` runs on a macOS runner for each `v*` tag.
   1. It sets `MARKETING_VERSION` from the tag.
@@ -732,9 +884,12 @@ Nothing in this slice is built.
   3. It runs `xcodebuild archive`.
   4. It runs `xcodebuild -exportArchive` with the upload to App Store Connect.
 - The job uses no fastlane and no other dependency.
-- Signing uses an App Store Connect API key (the `.p8` file, the key id, and the issuer id) as three GitHub secrets, with `-allowProvisioningUpdates`.
+- Signing uses an App Store Connect API key (the `.p8` file, the key id, and the issuer id) with `-allowProvisioningUpdates`.
   Apple then manages the certificate and the profile, and GitHub stores no certificate.
-  The key goes into the threat model next to the desktop signing secrets.
+- The three values go in a protected GitHub environment named `release`, not in repository secrets.
+  The key must be revocable.
+- The actions in the job are pinned to commit hashes.
+- The key goes into the threat model next to the desktop signing secrets.
   To check: the role that this key needs. Admin is believed necessary for managed signing.
 
 #### Manual steps
@@ -747,8 +902,8 @@ Nothing in this slice is built.
 
 #### Checks before relying on it
 
-- If the macOS runner image of GitHub has Xcode 27.2.
-  The project uses the project format of Xcode 27 and a deployment target of 27.2.
+- If the `ios` job of `ci.yml` runs on GitHub with Xcode 27.
+  The project uses the project format of Xcode 27.
   The fallbacks are a self-hosted runner on the Mac of the owner, or Xcode Cloud.
 - The cost of macOS runner minutes. They cost more on a private repository.
 
@@ -760,12 +915,6 @@ The pages are old, so check each fact in App Store Connect.
 - An app has up to 10,000 external testers.
 - A build stays available for 90 days.
 - Only the first build of an external group needs review. Later builds "may not require a full review".
-
-#### Possible now
-
-Not built, and the owner has not asked for it.
-A job in `.github/workflows/ci.yml` can run the Swift tests on the simulator without the account.
-It also shows if the runner image has Xcode 27.2.
 
 ## Threat model draft
 

@@ -601,9 +601,15 @@ same space.
   mutes the microphone and turns the camera off on a phone call. Two points
   are open: if WebKit fires `mute` for a phone call, also in Safari, and if the
   page script runs during the call or only on return. It is unknown which of the
-  two signals caused the mute. Also open: 136-4d (the shell side, and the
-  extension), and 136-5 (TestFlight). 136-4d and 136-5 need the paid Apple Developer account,
-  which the owner will buy and which is not active yet. Installs that last
+  two signals caused the mute. Slice 136-5a is built (2026-11-16): Web Inspector in Debug builds only, a deployment
+  target of 17.0 (not measured on iOS 17 to 27.1), ignore rules for signing files,
+  and a manual `ios` CI job for the Swift tests. Slice 136-4d part 1 is built
+  (2026-11-16): the receiver side of the push crypto and the payload text, with
+  tests. Open: the steps that need the paid Apple Developer account, which the owner
+  will buy and which is not active yet (136-5b the first upload, the rest of 136-4d,
+  and 136-5c the GitHub release job), the export compliance decision (the facts are
+  in the phase doc), the Beta App Review sign-in decision (the reviewer needs a TOTP
+  code), and the device checks. Installs that last
   longer than 7 days need it too. Until 136-4d, no push goes to Apple. In the Home
   Screen web app the call still pauses in the background, and the call view
   says so. In the app the call continues, and the view does not say so.
