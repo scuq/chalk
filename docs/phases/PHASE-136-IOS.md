@@ -2,10 +2,10 @@
 
 A plan for a small iPhone app that wraps the chalk web page.
 The goal is that a voice call continues when the user switches apps or locks the screen.
-**NOT IMPLEMENTED — no code exists.** This document is the plan and nothing below it has been built.
+The design was written on 14 November 2026.
 
-**Status: planned, not started.** Design only, written 14 November 2026.
-**Tag:** `#ios` → `tools/where.sh -g ios` (which today finds this file and nothing else, because there is nothing else).
+**Status: in progress.** Slice 136-1 is built and measured on a device (2026-11-16). The gate passed. Slices 136-2 to 136-6 are not started.
+**Tag:** `#ios` → `tools/where.sh -g ios` (this file and the `ios/` directory).
 
 Decisions from the owner:
 
@@ -23,7 +23,9 @@ This notice is the only handling today.
 
 Reports say that iOS blocks web audio and microphone input when a web page is not in the foreground.
 The sources are developer reports, not Apple documentation (see Sources).
-No device result exists, so each statement in this section is expected behavior, not a measured fact.
+No device result exists for the Home Screen web app, so each statement in this section about it is expected behavior, not a measured fact.
+Slice 136-1 measured the shell, not the Home Screen web app.
+In the shell, the call continued in the background (see "Result of 136-1").
 
 The call topology makes this worse.
 The voice design uses a mesh with coturn.
@@ -47,7 +49,7 @@ The app is a thin shell on the pattern of the desktop app (phase 104, [PHASE-104
   The server pin, the session cookie, and all crypto stay in the page and stay keyed to the server origin, as in `docs/phases/PHASE-104-DESKTOP.md:37-44`.
 - `Info.plist` lists `audio` in `UIBackgroundModes`.
   Developer reports say that the web view then keeps microphone capture in the background, and that iOS mutes it without the key.
-  This is unconfirmed until slice 136-1.
+  Slice 136-1 showed this on a device: the `audio` mode was enough, and no fallback was necessary.
 - The app grants camera and microphone to the server origin through the web view's media-capture delegate, so the page prompt shows one time.
 - Navigation stays on the server origin.
   Other links open in Safari.
@@ -78,13 +80,13 @@ The app is a thin shell on the pattern of the desktop app (phase 104, [PHASE-104
 
 ## Slices
 
-All slices are not started.
+Slice 136-1 is done. The other slices are not started.
 
 | Slice | Content | Status |
 | --- | --- | --- |
-| 136-1 | Device test, the gate for the phase. See below. | not started |
+| 136-1 | Device test, the gate for the phase. See below. | done, 2026-11-16 |
 | 136-2 | The shell: server address screen, navigation rule, permission grant, safe areas, file download, app icon. | not started |
-| 136-3 | The web client knows the shell. See below. | not started |
+| 136-3 | The web client knows the shell, and mutes on a phone call. See below. | not started |
 | 136-4 | Notifications in the shell. A decision first. See below. | not started |
 | 136-5 | Distribution. See below. | not started |
 | 136-6 | Optional: lock-screen call controls and audio route selection. Use CallKit only if a later iOS version removes the conflict. | not started |
@@ -100,13 +102,99 @@ Measure on a real iPhone, in a call with a second device:
 - The values of `"PushManager" in window` and `"Notification" in window`, and if WebAuthn works in the web view.
 - The iOS versions tested.
 
-If the microphone stops in the background, the phase stops here and this document records the result.
+If the microphone had stopped in the background, the phase would have stopped here.
+It did not stop, so the phase continues.
 
 The only in-repo evidence about a WKWebView is the engine table in `docs/phases/PHASE-104-DESKTOP.md:60`.
 That row is about macOS, not iOS.
 It says: "no `Notification`, no WebAuthn, no `setSinkId`".
 Do not assume that the iOS web view has the same limits.
-The test finds out.
+Slice 136-1 did not measure `Notification`, `PushManager`, or WebAuthn (see "Open measurements").
+
+### Result of 136-1
+
+The owner measured on 16 November 2026.
+The second participant was Chrome on a Mac.
+
+#### What was built
+
+The code is in `ios/`, a new directory.
+
+- Xcode 27.2 made the project.
+  It uses the new text project format: `ios/chalk.xcodeproj/project.xcproj`.
+  The `chalk` source folder is a synchronized folder, so a new Swift file needs no project-file edit.
+- `ios/chalk/ChalkWebView.swift` holds one `WKWebView`.
+  It loads a hard-coded server URL, because the server address screen stays in 136-2.
+  It sets `isInspectable` to true, allows inline media playback, and needs no user action to start media playback.
+- A `WKUIDelegate` grants camera and microphone only if the requesting origin is https and has the same host and port as the server URL.
+  Otherwise it denies.
+- `ios/Info.plist` sets `UIBackgroundModes` to `[audio]` and has `NSMicrophoneUsageDescription` and `NSCameraUsageDescription`.
+  The `INFOPLIST_FILE` build setting merges it into the generated plist.
+  The file is outside the synchronized folder, so Xcode does not also copy it as a resource.
+- `ios/.gitignore` covers build output and the per-user state of Xcode.
+- Signing uses a free Personal Team.
+  The deployment target is iOS 27.2, the default of Xcode.
+
+#### Setup
+
+- Device: iPhone 17 Pro with iOS 27.2.1 (24B156).
+- Server: the local development stack in a Linux virtual machine.
+  The phone reached it through ngrok on the free plan.
+  An https tunnel with a static ngrok domain led to chalkd.
+  An ngrok TCP tunnel led to coturn, which ran in its default loopback mode.
+- chalkd advertised two TURN URLs: `turn:localhost:3478` and `turn:<host>.tcp.eu.ngrok.io:<port>?transport=tcp`.
+- The environment of that chalkd:
+  - `CHALK_PUBLIC_URL`, `CHALK_RP_ID`, and `CHALK_RP_ORIGINS` held the ngrok https origin.
+  - `CHALK_TRUSTED_PROXY` was `127.0.0.1/32`.
+  - `CHALK_DEV` was unset, so the session cookie kept `Secure`.
+- The free plan of ngrok puts a warning page before browser user agents.
+  One tap on **Visit Site** was enough.
+  After that, the page, the API, and the WebSocket worked.
+
+#### Build loop
+
+1. Edit in the virtual machine.
+2. Copy the tree to the Mac with rsync.
+3. Build with `xcodebuild` over SSH, with `DEVELOPER_DIR` set to the `Xcode.app` path.
+
+A device build over SSH fails with `errSecInternalComponent`.
+The owner must run `security set-key-partition-list -S apple-tool:,apple:,codesign: -s <login keychain>` in Terminal on the Mac.
+Until then, installs go through **Run** in Xcode.
+
+#### Gotcha: a stale project in Xcode
+
+Xcode kept its in-memory project and missed a change to `INFOPLIST_FILE` that was made on disk.
+The built app then had no usage strings.
+WebKit hid `navigator.mediaDevices` completely.
+The page showed "undefined is not an object evaluating navigator.mediaDevices.getUserMedia".
+Reopening the project fixed it.
+Check the `Info.plist` of the built app before a device test.
+
+#### Results
+
+- Voice works in the foreground in both directions.
+  The media went through TURN over TCP and ngrok.
+- App switch: the call continued with audio in both directions.
+  The WebSocket stayed connected, and chalkd logged no disconnect for the phone.
+- Screen lock: the same result.
+- Incoming phone call: chalk audio came back after the user reopened the app.
+  The owner accepts this.
+
+The gate passes, and the phase continues.
+The `audio` background mode was enough, so no fallback was necessary.
+
+#### Open measurements
+
+The owner has not measured these.
+No value is recorded for them.
+
+- If the app-switch and screen-lock checks held for the full 5 min.
+  The owner reported only that they work.
+- The value of `"PushManager" in window` in the web view.
+- The value of `"Notification" in window` in the web view.
+- If WebAuthn works in the web view.
+  A failure would mostly reflect the missing Associated Domains capability of a Personal Team, not `WKWebView`.
+  The owner has not looked for that capability in the capability list of Xcode.
 
 ### 136-3 the page knows the shell
 
@@ -115,6 +203,19 @@ The page then hides the background notice in `web/src/components/PhoneCallSheet.
 Today `pushSupported` in `web/src/notify/push.ts` decides if push is offered.
 If the socket closes in the background, this slice defines the fix.
 A grace period on the server is a possible fix and needs its own decision.
+The slice also handles an incoming phone call.
+The owner wants this: when a phone call comes in, chalk mutes the microphone and turns the camera off.
+Then the user does not return live.
+Two signals are candidates.
+Check them before the slice is scoped:
+
+- Web only: WebKit possibly fires a `mute` event on the microphone track when the phone call takes the audio.
+  This works in the Home Screen web app too.
+  It is unverified.
+  Check this signal first.
+- Native: the shell watches calls with `CXCallObserver` and tells the page.
+  The shell only observes and is not a CallKit provider, so the rejected CallKit conflict does not apply.
+  The page sets its own mute, so the decision stays in the page.
 
 ### 136-4 notifications
 
@@ -134,8 +235,9 @@ Check Apple's current rule for the review of internal TestFlight builds before t
 
 ## Threat model draft
 
-This text goes into `docs/threat-model.md` with the first built slice.
-Nothing in that file changes now.
+Slice 136-1 is the first built slice.
+The shell text is now in [threat-model.md](../threat-model.md), section "The iOS shell (phase 136)".
+The list below is the design draft. The items about APNs and passkeys wait for 136-4 and 136-2.
 
 - The shell is a new binary that the user must trust.
   The developer signs it and Apple delivers it.
@@ -154,9 +256,10 @@ Nothing in that file changes now.
 
 - A Mac with Xcode: present.
 - A paid Apple Developer account: absent, and necessary from 136-5.
-- Background capture: unknown. No device result exists for any claim in this document about background capture.
-- The behavior of passkeys, `Notification`, and `PushManager` in a web view on iOS: unknown until 136-1.
-- The iOS versions that matter: unknown until 136-1.
+- Background capture in the shell: works for app switch and screen lock on iOS 27.2.1. Measured in 136-1. The full 5 min is not measured.
+- Background capture in the Home Screen web app: unmeasured.
+- The behavior of passkeys, `Notification`, and `PushManager` in a web view on iOS: unmeasured (see "Open measurements").
+- The iOS versions that matter: only iOS 27.2.1 was tested.
 
 ## Sources
 

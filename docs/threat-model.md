@@ -403,6 +403,29 @@ gated on a signature, not on where the bytes came from:
   release is prevented only by the version comparison (`isNewer`), not by a
   signed timestamp — a future rotation note in the phase doc.
 
+## The iOS shell (phase 136)
+
+The iOS shell (`ios/`, phase 136) is a small app with one web view.
+It loads the home server and bundles no part of chalk.
+The user must trust it, in the same way as the desktop app.
+
+- The developer signs the shell, and Apple delivers it.
+  The shell can read the whole content of the page.
+- The home server still serves the client.
+  A MITM that serves the SPA bundle itself is endpoint compromise.
+  The shell does not change this.
+- The shell grants camera and microphone only to the server origin.
+  The origin must be https and must have the same host and port as the server URL.
+  The shell denies all other requests.
+- The server pin, the session cookie, and all crypto stay in the page.
+  They stay keyed to the server origin.
+
+Phase 136 has not decided on push in the shell.
+A native Apple push sender in chalkd, if it is built, adds a second third party after web push.
+Passkeys possibly do not work in the web view, because associated domains are compiled into the app.
+Password with TOTP is not affected.
+This is unmeasured.
+
 ## Third parties: web push (phase 65)
 
 Web push is the first feature in which chalkd contacts a service that the

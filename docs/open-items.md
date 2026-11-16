@@ -577,10 +577,14 @@ same space.
   membership layer); needs a re-sketch against the new phase 83, then
   its own review, before any code.
 - **An iOS wrapper app** (136, [phases/PHASE-136-IOS.md](phases/PHASE-136-IOS.md)):
-  designed, not started. It starts with a device test on a real iPhone, and
-  that test decides if the phase continues. Installs that last longer than
-  7 days need a paid Apple Developer account. Until then the call pauses in
-  the background on an iPhone, and the call view says so.
+  in progress. Slice 136-1 is done (2026-11-16): on an iPhone, a call
+  continued through an app switch and a screen lock in the shell, so the gate
+  passed. Open next: 136-2 (the shell), the open measurements (the full
+  5 min, `PushManager`, `Notification`, WebAuthn), and the idea in 136-3 to
+  mute the microphone and turn the camera off on a phone call. Installs that
+  last longer than 7 days need a paid Apple Developer account. In the Home
+  Screen web app the call still pauses in the background, and the call view
+  says so.
 - **The SFU seam** (voice design Slice I) for rooms too large for a mesh.
 - **Governance `set_config` proposals.**
 - **Database-credential hardening** (99, [phases/PHASE-99-DBCREDS.md](phases/PHASE-99-DBCREDS.md)):
