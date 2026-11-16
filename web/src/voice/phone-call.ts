@@ -77,3 +77,23 @@ export function canShareScreen(mediaDevices: unknown): boolean {
 export function isAppleMobile(userAgent: string, platform: string, maxTouchPoints: number): boolean {
   return /iPhone|iPad|iPod/.test(userAgent) || (platform === "MacIntel" && maxTouchPoints > 1);
 }
+
+/**
+ * An InterruptPlan lists what a phone call changes in the voice session.
+ * Each field is true only when something must turn off.
+ */
+export interface InterruptPlan {
+  mute: boolean;
+  camOff: boolean;
+}
+
+/**
+ * interruptPlan returns what to turn off when the phone takes the microphone.
+ * Outside a call (inCall false) it returns nothing to change. In a call it
+ * mutes if the user is not muted, and it turns the camera off if camOn is true.
+ * It never turns anything on.
+ */
+export function interruptPlan(inCall: boolean, muted: boolean, camOn: boolean): InterruptPlan {
+  if (!inCall) return { mute: false, camOff: false };
+  return { mute: !muted, camOff: camOn };
+}

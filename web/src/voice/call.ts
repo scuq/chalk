@@ -203,6 +203,8 @@ export interface VoiceCallCallbacks {
   onErrorResolved?(message: string): void;
   /** 41-5: the transmit gate opened or closed (VAD / push-to-talk). */
   onMicGate?(open: boolean): void;
+  /** 136-3: the system muted the microphone track, for example for a phone call. */
+  onMicInterrupted?(): void;
   /** 103-2: turning the camera back on could not reopen the device; the
    * call is now camera-off and the session's toggle should say so. */
   onCameraLost?(): void;
@@ -671,6 +673,7 @@ export class VoiceCall {
     mic.setPrefs(this.micPrefs);
     mic.setMuted(this.muted);
     mic.onGateChange((open) => this.o.callbacks.onMicGate?.(open));
+    mic.onInterrupted(() => this.o.callbacks.onMicInterrupted?.()); // 136-3
     this.micChain = mic;
     this.cameraChain = camera;
     this.hasVideo = camera !== null;
@@ -699,6 +702,7 @@ export class VoiceCall {
     if (this.closed || !this.joined || !mic) return null;
     const camera = this.cameraChain;
     mic.onGateChange(null);
+    mic.onInterrupted(null); // 136-3
     mic.setKeyHeld(false);
     mic.setMuted(true);
     camera?.setActive(false);
@@ -760,6 +764,7 @@ export class VoiceCall {
     try {
       this.micChain = await MicChain.fromStream(micStream, this.micPrefs);
       this.micChain.onGateChange((open) => this.o.callbacks.onMicGate?.(open));
+      this.micChain.onInterrupted(() => this.o.callbacks.onMicInterrupted?.()); // 136-3
     } catch (err) {
       this.diag(`mic graph unavailable, publishing raw capture: ${String(err)}`);
     }

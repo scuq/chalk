@@ -102,3 +102,12 @@ test("iPhone and iPad are Apple mobile, a Mac without touch and Android are not"
   assert.equal(isAppleMobile("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", "MacIntel", 0), false);
   assert.equal(isAppleMobile("Mozilla/5.0 (Linux; Android 15; Pixel 9)", "Linux armv8l", 5), false);
 });
+
+test("a phone call mutes and turns the camera off, and never turns anything on", async () => {
+  const { interruptPlan } = await import("./phone-call");
+  assert.deepEqual(interruptPlan(true, false, true), { mute: true, camOff: true });
+  assert.deepEqual(interruptPlan(true, true, true), { mute: false, camOff: true });
+  assert.deepEqual(interruptPlan(true, false, false), { mute: true, camOff: false });
+  assert.deepEqual(interruptPlan(true, true, false), { mute: false, camOff: false });
+  assert.deepEqual(interruptPlan(false, false, true), { mute: false, camOff: false });
+});

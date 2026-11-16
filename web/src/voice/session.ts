@@ -48,6 +48,8 @@ import {
   type PeerAudioStore,
 } from "./peer-audio-store";
 import { clampPeerVolume } from "./boost"; // 119-1
+import { interruptPlan } from "./phone-call";
+import { installIOSPhoneCallListener } from "../ios-shell";
 export type { ScreenShareMode } from "./call";
 
 // ---- per-peer local audio prefs (Addendum A: A1 + the element-volume
@@ -511,6 +513,7 @@ class VoiceSessionImpl {
             if (this.s.error === msg) this.set({ error: null });
           },
           onMicGate: (open) => this.set({ micOpen: open }),
+          onMicInterrupted: () => this.interrupt(), // 136-3: the system muted the microphone track
           // 103-2: the device would not come back; keep the button honest.
           onCameraLost: () => this.setGlobal({ camOn: false }),
           onSpeaking: (keys) =>
@@ -784,6 +787,25 @@ class VoiceSessionImpl {
     }
   }
 
+  /**
+   * interrupt mutes the microphone and turns the camera off when the phone
+   * takes the microphone, for example for a phone call. It uses the same
+   * calls as the buttons, so the state is saved like a click. It does nothing
+   * outside a call. It never turns anything on, so the user must unmute
+   * after the phone call. The user's own unmute wins, because interrupt runs
+   * only on a new signal.
+   */
+  interrupt(): void {
+    const plan = interruptPlan(this.call !== null, this.s.muted, this.s.camOn);
+    if (plan.mute) {
+      this.call?.setAudioState(true, this.s.deafened);
+      this.setGlobal({ muted: true });
+    }
+    if (plan.camOff && this.call?.setVideoEnabled(false)) {
+      this.setGlobal({ camOn: false });
+    }
+  }
+
   /** setKeyHeld reports the push-to-talk / push-to-mute key to the live call. */
   setKeyHeld(held: boolean): void {
     this.call?.setKeyHeld(held);
@@ -969,3 +991,6 @@ class VoiceSessionImpl {
 
 /** The one session. Import and use; never construct another. */
 export const voiceSession = new VoiceSessionImpl();
+
+// 136-3: inside the iOS app, a connected phone call runs interrupt.
+installIOSPhoneCallListener(() => voiceSession.interrupt());

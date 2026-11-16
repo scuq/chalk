@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from "preact/hooks";
 import { TypePushState, type PushStatePayload } from "../proto";
+import { iosShellPresent } from "../ios-shell";
 import {
   disablePush,
   enablePush,
@@ -55,6 +56,7 @@ export function PushSettings({ serverEnabled, client, sealed }: Props) {
     sealed,
     appleMobile: isAppleMobile(navigator.userAgent, navigator.platform, navigator.maxTouchPoints ?? 0),
     standalone: standalone(),
+    iosShell: iosShellPresent(),
     permission: perm,
   });
 
@@ -109,6 +111,12 @@ export function PushSettings({ serverEnabled, client, sealed }: Props) {
 
   return (
     <div class="chalk-profile-field chalk-profile-push" data-testid="notify-push">
+      {/* 136-3: the app has no web push, and the Home Screen hint does not apply. */}
+      {avail === "ios-app" && (
+        <p class="chalk-profile-hint" data-testid="notify-push-ios-app">
+          push notifications in the app are not available yet.
+        </p>
+      )}
       {avail === "ios-home-screen" && (
         <p class="chalk-profile-hint" data-testid="notify-push-ios">
           push on an iPhone or iPad needs chalk on the Home Screen. in Safari, tap Share, then Add to Home Screen, and

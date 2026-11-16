@@ -73,3 +73,53 @@ struct LinkRuleTests {
         #expect(LinkRule.classify("https://chat.example.org/", serverOrigin: nil) == .external)
     }
 }
+
+@MainActor
+struct PhoneCallTrackerTests {
+    @Test func tellsOncePerConnectedCall() {
+        var tracker = PhoneCallTracker()
+        let call = UUID()
+        #expect(tracker.update(id: call, connected: false, ended: false) == false)
+        #expect(tracker.update(id: call, connected: true, ended: false) == true)
+        #expect(tracker.update(id: call, connected: true, ended: false) == false)
+        #expect(tracker.update(id: call, connected: true, ended: true) == false)
+        let next = UUID()
+        #expect(tracker.update(id: next, connected: true, ended: false) == true)
+    }
+
+    @Test func aDeclinedCallTellsNothing() {
+        var tracker = PhoneCallTracker()
+        let call = UUID()
+        #expect(tracker.update(id: call, connected: false, ended: false) == false)
+        #expect(tracker.update(id: call, connected: false, ended: true) == false)
+    }
+
+    @Test func twoCallsAtOnceTellOncePerCall() {
+        var tracker = PhoneCallTracker()
+        let a = UUID(), b = UUID()
+        #expect(tracker.update(id: a, connected: true, ended: false) == true)
+        #expect(tracker.update(id: b, connected: true, ended: false) == true)
+        #expect(tracker.update(id: a, connected: true, ended: false) == false)
+    }
+}
+
+@MainActor
+struct ShellMarkTests {
+    @Test func scriptDefinesTheMark() {
+        let s = ShellMark.script(version: "1.0")
+        #expect(s.contains("\"chalkIOS\""))
+        #expect(s.contains("shell: \"chalk-ios/1.0\""))
+        #expect(s.contains("configurable: false"))
+    }
+
+    @Test func versionCannotBreakOutOfTheString() {
+        let s = ShellMark.script(version: "1\"; alert(1); \"")
+        #expect(!s.contains("alert(1)\";"))
+        #expect(s.contains("chalk-ios/1alert1"))
+    }
+
+    @Test func phoneCallEventMatchesThePage() {
+        #expect(ShellMark.phoneCallEvent == "chalk-ios-phone-call")
+        #expect(ShellMark.phoneCallScript.contains("chalk-ios-phone-call"))
+    }
+}

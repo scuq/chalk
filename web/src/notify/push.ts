@@ -135,22 +135,30 @@ export function openTargetFromMessage(data: unknown): OpenTarget | null {
   return t.channelID || t.reminderID ? t : null;
 }
 
-/** What the push settings can offer on this device. */
+/**
+ * What the push settings can offer on this device. "ios-app" (136-3) is a
+ * placeholder until the app has its own push toggle.
+ */
 export type PushAvailability =
   | "server-off"
+  | "ios-app"
   | "ios-home-screen"
   | "unsupported"
   | "unsealed"
   | "denied"
   | "ready";
 
-/** The facts about this device and session that pushAvailability reads. */
+/**
+ * The facts about this device and session that pushAvailability reads.
+ * iosShell is true inside the iOS app (136-3).
+ */
 export interface PushEnv {
   serverEnabled: boolean;
   supported: boolean;
   sealed: boolean;
   appleMobile: boolean;
   standalone: boolean;
+  iosShell: boolean;
   permission: NotificationPermission | null;
 }
 
@@ -159,6 +167,7 @@ export interface PushEnv {
  * the conditions in this order and returns the first that holds:
  *
  *   - "server-off": the server has push off.
+ *   - "ios-app": the page runs inside the iOS app, which has no web push.
  *   - "ios-home-screen": an iPhone or iPad runs chalk outside the Home Screen app.
  *   - "unsupported": the browser has no push support.
  *   - "unsealed": the connection is not sealed.
@@ -168,6 +177,7 @@ export interface PushEnv {
  */
 export function pushAvailability(e: PushEnv): PushAvailability {
   if (!e.serverEnabled) return "server-off";
+  if (e.iosShell) return "ios-app";
   if (e.appleMobile && !e.standalone) return "ios-home-screen";
   if (!e.supported) return "unsupported";
   if (!e.sealed) return "unsealed";

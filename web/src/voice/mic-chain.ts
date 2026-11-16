@@ -56,10 +56,13 @@ export class MicChain {
   private keyHeld = false;
   private timer: number | null = null;
   private onGate: ((open: boolean) => void) | null = null;
+  // 136-3: runs when the system mutes the raw microphone track.
+  private onInterrupt: (() => void) | null = null;
 
   private constructor(ctx: AudioContext, raw: MediaStream, prefs: MicPrefs) {
     this.ctx = ctx;
     this.raw = raw;
+    this.watchInterruption(raw); // 136-3
     this.cfg = gateConfig(prefs);
 
     this.gainNode = ctx.createGain();
@@ -241,6 +244,25 @@ export class MicChain {
   }
 
   /**
+   * onInterrupted sets the function that runs when the system mutes the raw
+   * microphone track, for example for a phone call. Pass null to remove it.
+   */
+  onInterrupted(fn: (() => void) | null): void {
+    this.onInterrupt = fn;
+  }
+
+  // Listens for the `mute` event on each raw track of stream. The event counts
+  // only when the track is still muted, the chain is open, and stream is still
+  // the current capture. Unknown: if WebKit fires `mute` for a phone call.
+  private watchInterruption(stream: MediaStream): void {
+    for (const t of stream.getAudioTracks()) {
+      t.addEventListener("mute", () => {
+        if (!this.closed && stream === this.raw && t.muted) this.onInterrupt?.();
+      });
+    }
+  }
+
+  /**
    * setMuted gates the RAW track rather than the published one. Muting the
    * destination track would leave the graph running on live mic audio, so the
    * level meter would keep bouncing while the user believes they are muted.
@@ -294,6 +316,7 @@ export class MicChain {
     const oldRaw = this.raw;
     this.source.disconnect();
     this.raw = next;
+    this.watchInterruption(next); // 136-3: the new capture needs its own listener
     this.source = this.ctx.createMediaStreamSource(next);
     this.source.connect(this.gainNode);
     // A fresh capture always starts enabled; carry the mute across.

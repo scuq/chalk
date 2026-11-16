@@ -12,6 +12,7 @@ import { fmtDuration } from "../voice/duration";
 import { railTiles, type RailTile } from "../voice/rail-tiles";
 import { callLayout, canShareScreen, cardColumns, isAppleMobile, stageGrid } from "../voice/phone-call";
 import { flippedFacing, useDevicePrefs } from "../voice/device-prefs";
+import { iosShellPresent } from "../ios-shell";
 import { Avatar } from "./Avatar";
 import { occupantName } from "./Sidebar";
 import { DeafIcon, MicOffIcon, ScreenIcon } from "./VoiceBadges";
@@ -47,9 +48,12 @@ interface Props {
 }
 
 // 135-7: iOS suspends the page, and the call, while it is in the background.
+// 136-3: this is false inside the iOS app, because the call continues there
+// in the background (measured in 136-1).
 const APPLE_MOBILE =
   typeof navigator !== "undefined" &&
-  isAppleMobile(navigator.userAgent, navigator.platform, navigator.maxTouchPoints ?? 0);
+  isAppleMobile(navigator.userAgent, navigator.platform, navigator.maxTouchPoints ?? 0) &&
+  !iosShellPresent();
 
 // A swipe down on the head that goes past this closes the view.
 const CLOSE_DRAG_PX = 90;

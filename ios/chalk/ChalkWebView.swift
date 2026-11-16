@@ -1,3 +1,4 @@
+import CallKit
 import SwiftUI
 import UIKit
 import WebKit
@@ -14,6 +15,14 @@ struct ChalkWebView: UIViewRepresentable {
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true
         config.mediaTypesRequiringUserActionForPlayback = []
+        // 136-3: the mark runs at document start, before any page script, so
+        // the page sees it at module load. It is not a page script, so the page
+        // CSP does not apply to it (unverified on a device).
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
+        config.userContentController.addUserScript(WKUserScript(
+            source: ShellMark.script(version: version),
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true))
         let view = WKWebView(frame: .zero, configuration: config)
         context.coordinator.configure(view)
         view.load(URLRequest(url: server))
@@ -22,13 +31,16 @@ struct ChalkWebView: UIViewRepresentable {
 
     func updateUIView(_ view: WKWebView, context: Context) {}
 
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, CXCallObserverDelegate {
         let serverOrigin: String?
         let onFailure: (String) -> Void
         private let isChild: Bool
         private weak var main: WKWebView?
         private var children: [Coordinator] = []
         private var downloads: [ObjectIdentifier: URL] = [:]
+        // 136-3: observes phone calls and does not provide them, so it does not conflict with the web call.
+        private var callObserver: CXCallObserver?
+        private var calls = PhoneCallTracker()
 
         init(server: URL, onFailure: @escaping (String) -> Void, isChild: Bool = false) {
             serverOrigin = ServerAddress.origin(of: server)
@@ -42,7 +54,20 @@ struct ChalkWebView: UIViewRepresentable {
             view.uiDelegate = self
             view.allowsBackForwardNavigationGestures = false
             view.scrollView.contentInsetAdjustmentBehavior = .never
-            if !isChild { main = view }
+            if !isChild {
+                main = view
+                let observer = CXCallObserver()
+                observer.setDelegate(self, queue: .main)
+                callObserver = observer
+            }
+        }
+
+        // MARK: phone calls
+
+        // Runs on the main queue. Tells the page once when a call connects.
+        func callObserver(_ callObserver: CXCallObserver, callChanged call: CXCall) {
+            guard calls.update(id: call.uuid, connected: call.hasConnected, ended: call.hasEnded) else { return }
+            main?.evaluateJavaScript(ShellMark.phoneCallScript, completionHandler: nil)
         }
 
         // MARK: navigation

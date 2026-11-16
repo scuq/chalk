@@ -4,7 +4,7 @@ A plan for a small iPhone app that wraps the chalk web page.
 The goal is that a voice call continues when the user switches apps or locks the screen.
 The design was written on 14 November 2026.
 
-**Status: in progress.** Slice 136-1 is built and measured on a device (2026-11-16). The gate passed. Slice 136-2 is built and checked on a device (2026-11-16), with two checks open. A follow-up of 136-2 has a device check open. Slice 136-4 is split into four parts: 136-4a, 136-4b, and 136-4c are built (2026-11-16) and the part 136-4d is not started. Slices 136-3, 136-5, and 136-6 are not started.
+**Status: in progress.** Slice 136-1 is built and measured on a device (2026-11-16). The gate passed. Slice 136-2 is built and checked on a device (2026-11-16), with two checks open. A follow-up of 136-2 has a device check open. Slice 136-4 is split into four parts: 136-4a, 136-4b, and 136-4c are built (2026-11-16) and the part 136-4d is not started. Slice 136-3 is built and checked on a device (2026-11-16), with two details open. Slices 136-5 and 136-6 are not started.
 **Tag:** `#ios` → `tools/where.sh -g ios` (this file and the `ios/` directory).
 
 Decisions from the owner:
@@ -82,13 +82,13 @@ The app is a thin shell on the pattern of the desktop app (phase 104, [PHASE-104
 
 ## Slices
 
-Slices 136-1 and 136-2 are built, and 136-4a, 136-4b, and 136-4c are built. The other slices and parts are not started.
+Slices 136-1, 136-2, and 136-3 are built, and 136-4a, 136-4b, and 136-4c are built. The other slices and parts are not started.
 
 | Slice | Content | Status |
 | --- | --- | --- |
 | 136-1 | Device test, the gate for the phase. See below. | done, 2026-11-16 |
 | 136-2 | The shell: server address screen, navigation rule, permission grant, safe areas, file download, app icon. | built, 2026-11-16. Open: the Settings toggle and the print window. See below. |
-| 136-3 | The web client knows the shell, and mutes on a phone call. See below. | not started |
+| 136-3 | The web client knows the shell, and mutes on a phone call. See below. | built and checked on a device, 2026-11-16. Checks (d) and (e) open. |
 | 136-4 | Notifications in the shell: an APNs sender in chalkd. Four parts. See below. | 136-4a, 136-4b, and 136-4c built, 2026-11-16. 136-4d not started. |
 | 136-4a | APNs sender package, provider token, config parsing. No account needed. | built, 2026-11-16 |
 | 136-4b | Device rows, a sealed WebSocket frame, fan-out from the dispatcher, chalkd builds the sender. No account needed. | built, 2026-11-16 |
@@ -206,7 +206,7 @@ The shell sets `isInspectable`.
   So the page cannot read the real iOS version from the user agent.
   The user agent has no `Version/` token and no `Safari/` token, unlike Safari.
   This difference is a side effect of the default user agent of `WKWebView`, not a deliberate mark.
-  Slice 136-3 still adds an explicit mark.
+  Slice 136-3 adds an explicit mark.
 
 These results are for the shell.
 The background behavior of the Home Screen web app is still unmeasured.
@@ -330,27 +330,94 @@ These checks are not done:
 
 ### 136-3 the page knows the shell
 
-The shell marks itself, with a user agent suffix or a script message handler.
-The page then hides the background notice in `web/src/components/PhoneCallSheet.tsx` and the Home Screen hint in `web/src/components/PushSettings.tsx`.
-Today `pushSupported` in `web/src/notify/push.ts` decides if push is offered.
-`pushSupported` is expected to be false in the shell, because `PushManager` is absent.
-This is not yet verified in the code.
-The Home Screen hint in `web/src/components/PushSettings.tsx` still needs to be hidden in the shell.
-If the socket closes in the background, this slice defines the fix.
-A grace period on the server is a possible fix and needs its own decision.
-The slice also handles an incoming phone call.
-The owner wants this: when a phone call comes in, chalk mutes the microphone and turns the camera off.
-Then the user does not return live.
-Two signals are candidates.
-Check them before the slice is scoped:
+The shell marks itself, and the page changes two hints and reacts to a phone call.
 
-- Web only: WebKit possibly fires a `mute` event on the microphone track when the phone call takes the audio.
-  This works in the Home Screen web app too.
-  It is unverified.
-  Check this signal first.
-- Native: the shell watches calls with `CXCallObserver` and tells the page.
-  The shell only observes and is not a CallKit provider, so the rejected CallKit conflict does not apply.
-  The page sets its own mute, so the decision stays in the page.
+#### Decisions
+
+- The mark is a user script, not a user agent suffix and not a script message handler.
+  The script defines `window.chalkIOS = { shell: "chalk-ios/<version>", platform: "ios" }`.
+  The property is frozen and not configurable.
+  The version comes from `CFBundleShortVersionString`, and only letters, digits, and dots stay, so the version cannot end the string.
+- The script runs at document start, in the main frame only.
+  It runs before any page script, so a check at module load sees the mark.
+  The page reads the mark by its shape: a string `shell` that starts with "chalk-ios/".
+  The desktop app uses the same pattern with `window.chalkDesktop` (see `PHASE-104-DESKTOP.md`).
+- The content security policy of the page has `script-src 'self'`.
+  Native injection is not a page script, so the policy is expected not to apply.
+  The device check showed this for the user script (see the result of 136-3).
+- The call note "the call pauses while chalk is in the background" is hidden in the shell.
+  Slice 136-1 measured that the call continues in the background there.
+- The push settings have a new state, "ios-app".
+  `pushAvailability` returns it right after "server-off" and before "ios-home-screen".
+  The page shows "push notifications in the app are not available yet."
+  `pushSupported` is false in the shell, because `PushManager` is absent, but the explicit state does not depend on it.
+  Slice 136-4d replaces the text with the real toggle.
+- The socket needs no grace period.
+  Slice 136-1 measured that the WebSocket stays connected in the background in the shell.
+  The server grace period that this section reserved is not needed.
+  Keep it as a note: if a later device test shows a closed socket, the fix needs its own decision.
+
+#### Phone call: mute and camera off
+
+The owner's idea: when a phone call takes the microphone, chalk mutes it and turns the camera off.
+Then the user does not return live.
+
+- The rule only turns things off.
+  `interruptPlan(inCall, muted, camOn)` in `web/src/voice/phone-call.ts` returns `{ mute: !muted, camOff: camOn }` in a call, and nothing outside a call.
+- `VoiceSessionImpl.interrupt()` applies the plan with the same calls as the buttons: `call.setAudioState`, `call.setVideoEnabled(false)`, and `setGlobal`.
+  The state is saved like a click.
+- Nothing turns on when the phone call ends. The user unmutes.
+- The user's own unmute wins, because `interrupt` runs only on a new signal.
+
+There are two signals.
+
+- Signal 1, the shell.
+  A `CXCallObserver` in the coordinator of the main web view watches calls.
+  It is an observer and not a CallKit provider, so the conflict in "Rejected" does not apply.
+  It sees cellular calls, FaceTime calls, and other CallKit calls.
+  When a call connects, the shell dispatches the window event `chalk-ios-phone-call` once for that call.
+  `web/src/voice/session.ts` installs the listener at module load, and the listener runs `interrupt`.
+  `PhoneCallTracker` in `ios/chalk/PhoneCallTracker.swift` makes the once-per-call rule. A ringing or declined call tells nothing.
+- Signal 2, the page.
+  It works on the web too, in Safari and in the Home Screen web app.
+  `MicChain.watchInterruption` listens for `mute` on each raw microphone track, and again after a device swap.
+  When the system mutes the current track, the chain calls `onInterrupted`.
+  `call.ts` passes it to `onMicInterrupted`, also on the path that adopts parked media, and `detachMedia` clears it.
+  `session.ts` maps it to `interrupt`.
+  Unknown: if WebKit fires `mute` for a phone call.
+  If capture falls back to the raw stream without the mic graph, this signal is absent.
+
+### Result of 136-3
+
+The code is built and tested.
+The owner ran the device check on 16 November 2026.
+The device was an iPhone 17 Pro with iOS 27.2.1.
+The shell came from the working tree, and the dev stack ran through ngrok as in 136-1.
+Checks (a), (b), (c), and (f) passed. Checks (d) and (e) are open.
+
+#### Tests
+
+- Web: 2045 of 2045 pass.
+  New: `web/src/ios-shell.test.ts` (2 tests), a case in `push.test.ts` (the env helper has `iosShell`), and `interruptPlan` in `phone-call.test.ts`.
+- Swift: 16 of 16 pass on the simulator.
+  New: `PhoneCallTrackerTests` (3) and `ShellMarkTests` (3) in `ios/chalkTests/RulesTests.swift`.
+- The full Go suite passes. This slice has no Go change.
+
+#### Device checklist
+
+- (a) Passed. The mark is present. In Safari Web Inspector on the Mac, `window.chalkIOS` printed `{shell: "chalk-ios/1.0", platform: "ios"}`.
+  The user script ran under the content security policy of the page.
+  The test that overwrites the mark was not reported.
+- (b) Passed. In a call, the call note is gone. The push settings show the in-app text.
+- (c) Passed. A phone call during a chalk call muted the microphone and turned the camera off.
+  After the phone call, the user stayed muted.
+- (d) Open, as a detail. Unknown: if the page script runs while the phone call holds the audio, or only when the user returns.
+  The result of (c) holds in both cases. It was not measured separately.
+- (e) Open. Not tested: if WebKit fires `mute` for signal 2, also in Safari.
+  The owner accepts this.
+  Unknown: which of the two signals caused the mute in (c), because both are active in the app.
+- (f) Passed. `CXCallObserver` needs no entry in `Info.plist`.
+  The build has no new `Info.plist` key, and the observer worked in (c).
 
 ### 136-4 notifications
 

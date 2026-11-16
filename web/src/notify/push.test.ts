@@ -109,6 +109,7 @@ const env = (over: Partial<PushEnv> = {}): PushEnv => ({
   sealed: true,
   appleMobile: false,
   standalone: false,
+  iosShell: false,
   permission: "default",
   ...over,
 });
@@ -136,4 +137,11 @@ test("push errors map to settings text by their code", () => {
 test("a chalk-open message with a reminder opens it without a channel", () => {
   assert.deepEqual(openTargetFromMessage({ type: "chalk-open", reminderID: "r1" }), { reminderID: "r1" });
   assert.equal(openTargetFromMessage({ type: "other", reminderID: "r1" }), null);
+});
+
+test("inside the iOS app, push settings say so instead of the Home Screen hint", () => {
+  const app = { appleMobile: true, supported: false, iosShell: true };
+  assert.equal(pushAvailability(env(app)), "ios-app");
+  assert.equal(pushAvailability(env({ ...app, serverEnabled: false })), "server-off");
+  assert.equal(pushAvailability(env({ ...app, iosShell: false })), "ios-home-screen");
 });

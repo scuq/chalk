@@ -259,7 +259,7 @@ No claim about voice security goes on screen before `docs/threat-model.md` is ch
   `call.ts` recaptures when `cameraChanged` is true. For a change of `facing`, it asks the camera chain to stop the old camera first.
   `CameraChain.recapture(prefs, stopFirst?)` in `camera-chain.ts` has a stop-first path, because many phones cannot open both cameras at the same time. If the new camera fails, the old camera opens again and the error goes on to the caller. The new private `adopt` holds the tail that both paths share.
   The call view (`PhoneCallSheet.tsx`) has a "flip" button beside "chat" while the user's camera is on. The back camera is not mirrored.
-  In the call on an iPhone or an iPad, the view shows the note "the call pauses while chalk is in the background". `isAppleMobile` in `phone-call.ts` decides. An iPad reports a Mac platform, so a Mac with touch points counts too. The style is `.chalk-pcall-ios` in `theme.css`.
+  In the call on an iPhone or an iPad, the view shows the note "the call pauses while chalk is in the background". `isAppleMobile` in `phone-call.ts` decides. The iOS app (phase 136) hides the note, because a call continues in the background there. An iPad reports a Mac platform, so a Mac with touch points counts too. The style is `.chalk-pcall-ios` in `theme.css`.
   Tests: new `wake-lock.test.ts` and `media-session.test.ts`, with fakes for the browser APIs. New cases in `device-prefs.test.ts` (facing, `flippedFacing`, `cameraChanged`, the facing constraint) and in `phone-call.test.ts` (`isAppleMobile`).
 - **135-8 — row menu on the phone list.** Built 2026-11-14.
   A long press on a list row, or a right-click, opens a bottom sheet for that row. A tap still opens the conversation.

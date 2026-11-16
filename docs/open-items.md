@@ -595,15 +595,18 @@ same space.
   downloads, safe areas, and the app icon. The follow-up of 136-2 (the server screen in the look of chalk, and a web view that
   shrinks above the keyboard) is not checked on the device. Open: two 136-2 device checks (the
   Settings toggle that brings back the server screen, and the recovery-phrase
-  print window), one measurement (a passkey sign-in in the shell), 136-3 (hide
-  the Home Screen push hint in the shell), and the idea in 136-3 to
-  mute the microphone and turn the camera off on a phone call. Also open:
-  136-4d (the shell side, and the
+  print window) and one measurement (a passkey sign-in in the shell).
+  Slice 136-3 is done and checked on a device (2026-11-16): the page reads the
+  mark of the app, hides the call note and the Home Screen push hint there, and
+  mutes the microphone and turns the camera off on a phone call. Two points
+  are open: if WebKit fires `mute` for a phone call, also in Safari, and if the
+  page script runs during the call or only on return. It is unknown which of the
+  two signals caused the mute. Also open: 136-4d (the shell side, and the
   extension), and 136-5 (TestFlight). 136-4d and 136-5 need the paid Apple Developer account,
   which the owner will buy and which is not active yet. Installs that last
   longer than 7 days need it too. Until 136-4d, no push goes to Apple. In the Home
   Screen web app the call still pauses in the background, and the call view
-  says so.
+  says so. In the app the call continues, and the view does not say so.
 - **The SFU seam** (voice design Slice I) for rooms too large for a mesh.
 - **Governance `set_config` proposals.**
 - **Database-credential hardening** (99, [phases/PHASE-99-DBCREDS.md](phases/PHASE-99-DBCREDS.md)):
