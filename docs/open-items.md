@@ -609,9 +609,12 @@ same space.
   device keys, the tap path, and the push settings in the app, with tests. Open: the steps that need the paid Apple Developer account, which the owner
   will buy and which is not active yet (136-5b the first upload, the rest of 136-4d
   (the Push capability, the notification extension, the app group, and the device test),
-  and 136-5c the GitHub release job), the export compliance decision (the facts are
-  in the phase doc), the Beta App Review sign-in decision (the reviewer needs a TOTP
-  code), and the device checks. Installs that last
+  and 136-5c the GitHub release job), the Beta App Review sign-in decision (the reviewer needs a TOTP
+  code), and the device checks. The export compliance decision is made (2026-11-16, standard
+  encryption, `ITSAppUsesNonExemptEncryption` set to `true`). Open owner steps: answer the
+  App Store Connect follow-up questions on the first upload in line with it, check the
+  annual self-classification report for mass-market encryption (what applies and when it is
+  due), and check the question about distribution in France when Apple asks. Installs that last
   longer than 7 days need it too. Until the extension exists, a native push shows only the constant alert text of chalkd. In the Home
   Screen web app the call still pauses in the background, and the call view
   says so. In the app the call continues, and the view does not say so.

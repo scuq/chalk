@@ -95,7 +95,7 @@ Slices 136-1, 136-2, and 136-3 are built, and 136-4a, 136-4b, and 136-4c are bui
 | 136-4c | chalkctl support for the key, and the `docs/deployment.md` env table. No account needed. | built, 2026-11-16 |
 | 136-4d | Shell registration, the bridge, the extension, the tap, a device test. Part 1 needs no account. Parts 1 and 2 need no account. The rest needs the paid account. | parts 1 and 2 built, 2026-11-16. The rest not started. |
 | 136-5 | Distribution through TestFlight. Three parts. See below. | 136-5a built, 2026-11-16. 136-5b and 136-5c not started. |
-| 136-5a | Release preparation: Web Inspector in Debug only, deployment target 17.0, ignore rules, a CI job for the Swift tests, export compliance facts. No account needed. | built, 2026-11-16 |
+| 136-5a | Release preparation: Web Inspector in Debug only, deployment target 17.0, ignore rules, a CI job for the Swift tests, the export compliance record. No account needed. | built, 2026-11-16 |
 | 136-5b | The first upload to App Store Connect from the Mac of the owner. Needs the paid account. | not started |
 | 136-5c | A GitHub release job that uploads each tagged build. Needs the paid account. | not started |
 | 136-6 | Optional: lock-screen call controls and audio route selection. Use CallKit only if a later iOS version removes the conflict. | not started |
@@ -899,10 +899,11 @@ The owner checked that the free macOS runners of GitHub offer Xcode 27.
 - The same unsigned command passed on the Mac of the owner.
   The job itself has not run on GitHub.
 
-#### Export compliance (preparation)
+#### Export compliance
 
-This is preparation only. It is not legal advice. The owner decides, possibly with advice.
-The facts below come from Apple and the US rules, as the owner described them.
+Decision of the owner, 16 November 2026: answer 2, standard encryption algorithms in addition to those of the operating system.
+`ios/Info.plist` has `ITSAppUsesNonExemptEncryption` set to `true`.
+This section is not legal advice. The facts below come from Apple and the US rules, as the owner described them.
 Check each fact in App Store Connect when the question appears.
 
 App Store Connect asks about encryption for every build, unless `ITSAppUsesNonExemptEncryption` is in `Info.plist`.
@@ -921,33 +922,14 @@ What the web client does:
 - All algorithms are standard ones. Nothing is proprietary.
 - The main purpose of the app is end-to-end encrypted chat.
 
-The two candidate answers:
+The rejected option was answer 1: only encryption inside the operating system of Apple, or an exempt use.
+It sets the key to `false` and needs no documents.
 
-1. Only encryption inside the operating system of Apple, or an exempt use.
-   Set `ITSAppUsesNonExemptEncryption` to `NO`. No documents follow.
-2. Standard encryption algorithms in addition to those of the operating system.
-   Set `ITSAppUsesNonExemptEncryption` to `YES`.
-   For the US export rules this usually means an annual self-classification report for mass-market encryption.
-   Apple can also ask about distribution in France.
+Open steps for the owner. Each one is a check, not a legal claim:
 
-End-to-end encrypted messengers commonly give answer 2.
-The code that arrives at run time from the server does not obviously change what the app does for the user.
-
-Prepared lines for `ios/Info.plist`. Nothing is added until the owner decides.
-
-For answer 1:
-
-```xml
-<key>ITSAppUsesNonExemptEncryption</key>
-<false/>
-```
-
-For answer 2:
-
-```xml
-<key>ITSAppUsesNonExemptEncryption</key>
-<true/>
-```
+- On the first upload, App Store Connect asks follow-up questions about the encryption. Answer them in line with the decision.
+- The US export rules usually mean an annual self-classification report for mass-market encryption. Check what applies and when it is due.
+- Apple can ask about distribution in France. Check that question when it comes.
 
 #### Open decision: Beta App Review sign-in
 
