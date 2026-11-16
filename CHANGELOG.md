@@ -10,10 +10,11 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.12.5 — 16 November 2026 — Groundwork for the iOS app, and the phone keyboard
 
 ### Added
-- `chalkctl push apns set` stores the Apple key for push notifications to the chalk iOS app, and `chalkctl push apns clear --yes` removes it. `chalkctl push status` shows the state. The key stays through `init --force`, `update`, and a restore. The iOS app itself is not available yet.
+- A native chalk app for iPhone and iPad is in preparation. It is not available yet.
+- `chalkctl push apns set` stores the Apple key for push notifications to the chalk iOS app, and `chalkctl push apns clear --yes` removes it. `chalkctl push status` shows the state. The key stays through `init --force`, `update`, and a restore.
 
 ### Changed
 - During a voice call, chalk now mutes your microphone and turns your camera off when the phone takes the microphone, for example for a phone call. After the phone call you stay muted until you unmute.
