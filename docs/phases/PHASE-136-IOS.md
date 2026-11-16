@@ -4,7 +4,7 @@ A plan for a small iPhone app that wraps the chalk web page.
 The goal is that a voice call continues when the user switches apps or locks the screen.
 The design was written on 14 November 2026.
 
-**Status: in progress.** Slice 136-1 is built and measured on a device (2026-11-16). The gate passed. Slice 136-2 is built and checked on a device (2026-11-16), with two checks open. A follow-up of 136-2 has a device check open. Slice 136-4 is split into four parts: 136-4a is built (2026-11-16) and the parts 136-4b to 136-4d are not started. Slices 136-3, 136-5, and 136-6 are not started.
+**Status: in progress.** Slice 136-1 is built and measured on a device (2026-11-16). The gate passed. Slice 136-2 is built and checked on a device (2026-11-16), with two checks open. A follow-up of 136-2 has a device check open. Slice 136-4 is split into four parts: 136-4a and 136-4b are built (2026-11-16) and the parts 136-4c and 136-4d are not started. Slices 136-3, 136-5, and 136-6 are not started.
 **Tag:** `#ios` → `tools/where.sh -g ios` (this file and the `ios/` directory).
 
 Decisions from the owner:
@@ -82,16 +82,16 @@ The app is a thin shell on the pattern of the desktop app (phase 104, [PHASE-104
 
 ## Slices
 
-Slices 136-1 and 136-2 are built, and 136-4a is built. The other slices and parts are not started.
+Slices 136-1 and 136-2 are built, and 136-4a and 136-4b are built. The other slices and parts are not started.
 
 | Slice | Content | Status |
 | --- | --- | --- |
 | 136-1 | Device test, the gate for the phase. See below. | done, 2026-11-16 |
 | 136-2 | The shell: server address screen, navigation rule, permission grant, safe areas, file download, app icon. | built, 2026-11-16. Open: the Settings toggle and the print window. See below. |
 | 136-3 | The web client knows the shell, and mutes on a phone call. See below. | not started |
-| 136-4 | Notifications in the shell: an APNs sender in chalkd. Four parts. See below. | 136-4a built, 2026-11-16. 136-4b to 136-4d not started. |
+| 136-4 | Notifications in the shell: an APNs sender in chalkd. Four parts. See below. | 136-4a and 136-4b built, 2026-11-16. 136-4c and 136-4d not started. |
 | 136-4a | APNs sender package, provider token, config parsing. No account needed. | built, 2026-11-16 |
-| 136-4b | Device rows, a sealed WebSocket frame, fan-out from the dispatcher, chalkd builds the sender. No account needed. | not started |
+| 136-4b | Device rows, a sealed WebSocket frame, fan-out from the dispatcher, chalkd builds the sender. No account needed. | built, 2026-11-16 |
 | 136-4c | chalkctl support for the key, and the `docs/deployment.md` env table. No account needed. | not started |
 | 136-4d | Shell registration, the bridge, the extension, the tap, a device test. Needs the paid account. | not started |
 | 136-5 | Distribution through TestFlight. Needs the paid account. See below. | not started |
@@ -395,12 +395,12 @@ Another chalk server that a user enters on the server screen gets no native push
 | Part | Content | Needs the account | Status |
 | --- | --- | --- | --- |
 | 136-4a | APNs sender package, provider token, config parsing. | no | built, 2026-11-16 |
-| 136-4b | Device rows (a migration). A sealed WebSocket frame that carries the device token, the public key, and the authentication secret. Fan-out to both senders from the dispatcher, reminders included. chalkd builds the sender at start. | no | not started |
+| 136-4b | Device rows (a migration). A sealed WebSocket frame that carries the device token, the public key, and the authentication secret. Fan-out to both senders from the dispatcher, reminders included. chalkd builds the sender at start. | no | built, 2026-11-16 |
 | 136-4c | chalkctl: set the key that the operator supplies, keep it on `--force`, backfill it on `update`, and carry it on restore. The env table in `docs/deployment.md`. | no | not started |
 | 136-4d | Shell: registration for remote notifications, and a bridge that hands the token and the key to the page. The extension that decrypts. A tap that opens the channel. A device test. It needs the Push capability, an app group, and an extension target. | yes | not started |
 
 The env table in `docs/deployment.md` follows in 136-4c.
-Until 136-4b and 136-4c are done, the variables have no effect, so the table does not list them yet.
+Until 136-4c is done, the table does not list the variables, and the operator sets them by hand in `chalk.env`.
 
 #### Result of 136-4a
 
@@ -471,6 +471,138 @@ It uses only the Go standard library and the existing code of chalk, so it adds 
   The tests use a local TLS test server.
 - Verification: `go test ./internal/apns/ ./internal/webpush/ ./internal/config/` passes.
 
+#### Result of 136-4b
+
+Built on 16 November 2026.
+chalkd can now store the registration of an app install and send a push to it.
+No client sends the registration yet, so no user gets a native push (see "Limits of 136-4b").
+
+Design: one table with a `kind` column.
+Migration `0066_push_subscription_kind.sql` adds `kind` to `push_subscriptions`.
+The value is `webpush` (the default) or `apns`.
+Rows from before the migration become `webpush`.
+An APNs device is one row:
+
+| Column | Content for an APNs row |
+| --- | --- |
+| `endpoint` | The device token, in lowercase hexadecimal. |
+| `p256dh` | The public key that the app made for itself (65 bytes). |
+| `auth` | The authentication secret that the app made for itself (16 bytes). |
+| `vapid_key` | The APNs subscription key, `<bundle id>/<environment>`. |
+
+The rows go in the same table because the payload has the same shape as a Web Push subscription.
+The rules of phase 65 therefore cover APNs rows with no new code:
+
+- The row belongs to the login session and ends with it.
+- A session has one subscription, of either kind.
+- A user has at most 8 subscriptions, and the oldest goes first.
+- Guests have no grant.
+- The unsubscribe frame deletes the row.
+- The reminder-wake trigger of migration 0065 counts rows of both kinds.
+
+Rejected: a second table for APNs devices.
+It needs a second copy of the cap, the eviction, the session binding, and the trigger.
+
+`internal/store/push.go`:
+
+- `PushKind` has the values `PushKindWebPush` and `PushKindAPNs`.
+  `PushSubscription.Kind` and `pushCols` carry it.
+- `UpsertPushSubscription` takes the kind after the session token.
+  It refuses an unknown kind.
+- `ListPushSubscriptionsForUsers` takes a list of keys (`vapid_key = ANY($4)`) in place of one key.
+  An empty list returns nothing.
+  A VAPID public key is base64url and never holds `/`.
+  An APNs key always holds `/`.
+  One query therefore returns the web push rows of the current VAPID key and the APNs rows of the current topic and environment.
+  Rows of an old key of either kind are left out.
+
+Frames (`internal/proto/push.go`, `internal/server/push_ws.go`):
+
+- `push_subscribe_apns` and `push_subscribe_apns_ack`.
+  The payload is `PushSubscribeAPNsPayload` with `token`, `p256dh`, `auth` (both base64url), `scope`, `topic`, and `environment`.
+- The gates are the same as for `push_subscribe`: a sealed channel, a login session, and no guest.
+  The guest allowlist does not hold the frame.
+- If push is off or the server has no APNs sender, the answer is `push_disabled`.
+- `parsePushSubscribeAPNs` checks the topic and the environment first.
+  A difference gives the new error code `push_apns_mismatch`.
+  It means that the app has another bundle id, or that a sandbox build talks to a production server.
+  Then it checks the token (`apns.ValidateToken`), the P-256 point, the 16-byte auth secret, and the scope.
+  The server stores the token in lowercase.
+- `PushStatePayload` has three new fields.
+  `apns_topic` and `apns_environment` are empty if the server has no APNs sender or push is off.
+  This is how the page learns that native push is available.
+  `kind` is the kind of the subscription of the session.
+  `key_current` of an APNs row compares the row with the key of the sender.
+
+Dispatcher (`internal/server/push_dispatch.go`, `reminder_push.go`):
+
+- The interface `apnsSender` has `Send`, `Topic`, `Environment`, and `Key`.
+  `pushDispatcher.apns` is nil if APNs is off.
+- `keys()` returns the VAPID key, and the APNs key if APNs is on.
+  The dispatcher and the reminder sweep list rows with it.
+- `send` picks the sender by `sub.Kind`.
+- An APNs row while APNs is off is skipped.
+  It is not sent, not deleted, and not touched.
+  A server that drops its APNs settings therefore keeps the rows until the sessions end.
+- `apns.ErrGone` deletes the row, as `webpush.ErrGone` does.
+  Another error only logs.
+- `nativeOptions` maps the web push options.
+  The TTL stays, the priority is always high (10), and there is no collapse id.
+- Every device of a user, web or native, gets the same payload bytes.
+  One cooldown covers all devices: one push per user and channel in 60 s.
+
+chalkd (`cmd/chalkd/main.go`, `internal/server/server.go`):
+
+- chalkd builds the sender if `CHALK_PUSH_ENABLED=true` and the `CHALK_APNS_*` values are set.
+  It uses the same IPv4-only option and the same send timeout as web push.
+- The log line is `push: apns enabled (topic=... environment=...)` or `push: apns disabled (CHALK_APNS_* unset)`.
+- `Options.APNs` goes to the dispatcher and to the WebSocket handler only if it is not nil and web push is on.
+  The guard avoids a typed nil in the interface.
+- `internal/apns` gained `Sender.Environment()`, `Sender.Key()`, and `SubscriptionKey(topic, env)`.
+
+What Apple gets for each push:
+
+- The device token, in the request path.
+- The bundle id, in `apns-topic`.
+- The provider token, which names the team id and the key id.
+- A body with the constant alert text and one ciphertext of one fixed length.
+  RFC 8291 encrypts it with the same code as web push, to the key pair of the app.
+  Apple has no key.
+- Headers that are constant: push type `alert`, priority 10, expiration now plus 24 h, and no collapse id.
+  No header names a channel or a sender.
+
+The threat model has the full list ("Third parties: APNs (phase 136)").
+
+Tests:
+
+- `internal/server/push_apns_test.go` has 8 tests for these cases:
+
+  1. A dispatch to both kinds with the same payload.
+  2. The cooldown across devices.
+  3. The prune on `apns.ErrGone`.
+  4. APNs rows without a sender.
+  5. Reminders to APNs.
+  6. The parse cases.
+  7. The push state.
+  8. The guest fence.
+
+- `internal/store/push_test.go` has the new subtest "an APNs device is listed only under its own key".
+- The fakes in `push_dispatch_test.go` and `reminder_push_test.go` take a list of keys.
+
+#### Limits of 136-4b
+
+- chalkctl does not know `CHALK_APNS_*` yet (136-4c).
+  The repo rule is that chalkctl must generate a server variable, keep it on `--force`, and backfill it on `update`.
+  Here chalkctl accepts the value from the operator.
+  Until then the operator sets the variables by hand in `chalk.env`.
+  The env table in `docs/deployment.md` also comes with 136-4c.
+- The page and the app do not send `push_subscribe_apns` yet (136-4d, which needs the paid account).
+  No user can get a native push yet.
+- Nothing was sent to the real APNs, and no chalkd ran with APNs settings.
+- Verification: `go test ./...` passes.
+  The store tests pass with `CHALK_TEST_PGURL` set to the dev Postgres, in a scratch database with all migrations.
+  `test/integration` was not run, because its fixtures are not seeded on the dev database.
+
 ### 136-5 distribution
 
 Free signing expires after 7 days, so it served 136-1 only.
@@ -525,7 +657,7 @@ It also shows if the runner image has Xcode 27.2.
 
 Slice 136-1 is the first built slice.
 The shell text is now in [threat-model.md](../threat-model.md), section "The iOS shell (phase 136)".
-The list below is the design draft. The item about APNs is decided and waits for 136-4b. The item about passkeys waits for a measurement.
+The list below is the design draft. The item about APNs is decided, and the third-party section for it is now in the threat model. The item about passkeys waits for a measurement.
 
 - The shell is a new binary that the user must trust.
   The developer signs it and Apple delivers it.
@@ -537,7 +669,7 @@ The list below is the design draft. The item about APNs is decided and waits for
 - The native APNs sender is a second third party after web push (`docs/threat-model.md:396-470`).
   Apple sees only ciphertext and the device token (see 136-4).
   The sender holds the `.p8` key of the developer team, a new secret on the server.
-  The key goes into the threat model with 136-4b, when chalkd can send.
+  The key went into the threat model with 136-4b, when chalkd could send.
   The App Store Connect API key of 136-5 is a second new secret, in GitHub.
 - Passkeys possibly do not work in the web view.
   Associated domains are compiled into the app, and each server has its own domain.

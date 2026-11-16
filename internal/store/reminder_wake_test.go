@@ -40,7 +40,7 @@ func TestReminderWakes(t *testing.T) {
 	}
 	sub := func(token []byte, endpoint string) PushSubscription {
 		t.Helper()
-		p, err := s.UpsertPushSubscription(ctx, token, endpoint, keyBytes(4, 65), keyBytes(7, 16), PushScopeDMs, "BKEY")
+		p, err := s.UpsertPushSubscription(ctx, token, PushKindWebPush, endpoint, keyBytes(4, 65), keyBytes(7, 16), PushScopeDMs, "BKEY")
 		if err != nil {
 			t.Fatalf("upsert %s: %v", endpoint, err)
 		}

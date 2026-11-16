@@ -127,7 +127,7 @@ as-built rather than a contemporaneous plan.
 | 133 | polish — semantic tokens and a refined shell, one look for hover, selected, and unread in every theme, and an adaptive voice room | [PHASE-133-POLISH.md](phases/PHASE-133-POLISH.md) |
 | 134 | chaos mode — one list of the text channels, newest activity on top, and each row shows its group as a small tag | [PHASE-134-CHAOS.md](phases/PHASE-134-CHAOS.md) |
 | 135 | phone — the chat list is the phone layout, with a call bar and view, back-gesture layers, and a row sheet *(device checklist open)* | [PHASE-135-PHONE.md](phases/PHASE-135-PHONE.md) |
-| 136 | ios: a wrapper app keeps a call running in the background *(in progress, 136-1, 136-2, and 136-4a built; device checklist open)* | [PHASE-136-IOS.md](phases/PHASE-136-IOS.md) |
+| 136 | ios: a wrapper app keeps a call running in the background *(in progress, 136-1, 136-2, 136-4a, and 136-4b built; device checklist open)* | [PHASE-136-IOS.md](phases/PHASE-136-IOS.md) |
 | 137 | phone polish — a full-width composer, grouped messages, taller rows, one-row headers, a slide between the list and a chat, friend chips in up to two lines beside a count button, and a filter bar with kind chips, and icon buttons in the list head for the parking lot, threads, filter, add a friend, and new channel, and the status dot in place of the "@" on a direct conversation *(device checklist open)* | [PHASE-137-POLISH.md](phases/PHASE-137-POLISH.md) |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind

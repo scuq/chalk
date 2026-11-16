@@ -582,7 +582,10 @@ same space.
   its own review, before any code.
 - **An iOS wrapper app** (136, [phases/PHASE-136-IOS.md](phases/PHASE-136-IOS.md)):
   in progress. Slice 136-4a is built (2026-11-16): the APNs sender package in
-  `internal/apns/` and its config values. Nothing uses it yet. Slice 136-1 is done (2026-11-16): on an iPhone, a call
+  `internal/apns/` and its config values. Slice 136-4b is built (2026-11-16):
+  a `kind` column on the push rows, the sealed frame `push_subscribe_apns`, the
+  fan-out to both senders (reminders included), and the sender that chalkd
+  builds. Nothing sends the frame yet, so no push goes to Apple. Slice 136-1 is done (2026-11-16): on an iPhone, a call
   continued through an app switch and a screen lock in the shell, so the gate
   passed. The call held for more than 5 min in each case, and
   the shell has no `PushManager` and no `Notification`. Slice 136-2 is built
@@ -593,11 +596,11 @@ same space.
   print window), one measurement (a passkey sign-in in the shell), 136-3 (hide
   the Home Screen push hint in the shell), and the idea in 136-3 to
   mute the microphone and turn the camera off on a phone call. Also open:
-  136-4b (device rows, the sealed frame, and the fan-out), 136-4c (chalkctl
-  support for the APNs key), 136-4d (the shell side, and the extension), and
-  136-5 (TestFlight). 136-4d and 136-5 need the paid Apple Developer account,
+  136-4c (chalkctl support for the APNs key: until it is done, the operator
+  sets the `CHALK_APNS_*` values by hand), 136-4d (the shell side, and the
+  extension), and 136-5 (TestFlight). 136-4d and 136-5 need the paid Apple Developer account,
   which the owner will buy and which is not active yet. Installs that last
-  longer than 7 days need it too. Until 136-4b, no push goes to Apple. In the Home
+  longer than 7 days need it too. Until 136-4d, no push goes to Apple. In the Home
   Screen web app the call still pauses in the background, and the call view
   says so.
 - **The SFU seam** (voice design Slice I) for rooms too large for a mesh.

@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/scuq/chalk/internal/apns"
 	"github.com/scuq/chalk/internal/auth"
 	"github.com/scuq/chalk/internal/friends"
 	"github.com/scuq/chalk/internal/presence"
@@ -81,6 +82,11 @@ type Options struct {
 
 	// 65-3: the Web Push sender. It is nil if push is disabled.
 	Push *webpush.Sender
+
+	// 136-4b: the APNs sender for the iOS app. It is nil if push is disabled
+	// or the CHALK_APNS_* values are not set. The server uses it only if
+	// Push is also set.
+	APNs *apns.Sender
 }
 
 // Server wraps the http.Server, hub, pubsub listener, presence/friends
@@ -163,7 +169,13 @@ func NewServer(opts Options) (*Server, error) {
 		if opts.Presence != nil {
 			data.pr = opts.Presence
 		}
-		s.pushD = newPushDispatcher(data, opts.Push, opts.InstanceID, opts.Logger)
+		// 136-4b: a nil *apns.Sender must not become a non-nil interface,
+		// because the dispatcher tests its apns field against nil.
+		var native apnsSender
+		if opts.APNs != nil {
+			native = opts.APNs
+		}
+		s.pushD = newPushDispatcher(data, opts.Push, native, opts.InstanceID, opts.Logger)
 	}
 	if s.attachOrphanTTL <= 0 {
 		s.attachOrphanTTL = 24 * time.Hour
@@ -192,6 +204,11 @@ func NewServer(opts Options) (*Server, error) {
 	s.wsh = wsh                      // gov-1b-2: retained for the governance sweeper
 	wsh.guestStore = opts.GuestStore // 80-9: nil = guest connections refused
 	wsh.push = opts.Push             // 65-4: nil = push disabled
+	// 136-4b: nil = native push disabled. The typed-nil guard is the same as
+	// for the dispatcher.
+	if opts.Push != nil && opts.APNs != nil {
+		wsh.apns = opts.APNs
+	}
 	mux.Handle("GET /ws", wsh)
 	// 83-6: the server identity for the registration-time pin. Public by
 	// design (it is the key every client compares against); served over the

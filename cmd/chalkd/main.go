@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 
 	chalk "github.com/scuq/chalk"
+	"github.com/scuq/chalk/internal/apns"
 	"github.com/scuq/chalk/internal/auth"
 	"github.com/scuq/chalk/internal/config"
 	"github.com/scuq/chalk/internal/friends"
@@ -189,8 +190,8 @@ func run(args []string) error {
 	// When unset, giphyClient stays nil -> the search endpoint answers 503
 	// and /api/auth/config reports giphy_enabled=false. The key never
 	// leaves the server.
-	// 65-11: CHALK_OUTBOUND_IPV4_ONLY gives the same option to the three
-	// outbound HTTP clients: Giphy, link preview, and Web Push. SMTP mail does
+	// 65-11: CHALK_OUTBOUND_IPV4_ONLY gives the same option to the four
+	// outbound HTTP clients: Giphy, link preview, Web Push, and APNs. SMTP mail does
 	// not use it. The log line shows the choice.
 	var (
 		giphyOpts []giphy.Option
@@ -245,6 +246,29 @@ func run(args []string) error {
 		log.Printf("push: enabled (subject=%s)", cfg.Push.Subject)
 	} else {
 		log.Printf("push: disabled (CHALK_PUSH_ENABLED=false)")
+	}
+	// 136-4b: build the APNs sender if push is on and the CHALK_APNS_* values
+	// are set. config.Validate has checked that they are all set or all unset.
+	// If either condition fails, apnsSender stays nil, and the iOS app gets
+	// no push. The sender uses the same send timeout as the Web Push sender,
+	// and the same IPv4-only option.
+	var apnsSender *apns.Sender
+	if cfg.Push.Enabled && cfg.Push.APNs.Configured() {
+		key, err := cfg.Push.APNs.ParseKey()
+		if err != nil {
+			return fmt.Errorf("push: %w", err)
+		}
+		env, err := apns.ParseEnvironment(cfg.Push.APNs.Environment)
+		if err != nil {
+			return fmt.Errorf("push: %w", err)
+		}
+		apnsSender, err = apns.NewSender(key, cfg.Push.APNs.Topic, env, pushSendTimeout, pushOpts...)
+		if err != nil {
+			return fmt.Errorf("push: %w", err)
+		}
+		log.Printf("push: apns enabled (topic=%s environment=%s)", cfg.Push.APNs.Topic, env)
+	} else if cfg.Push.Enabled {
+		log.Printf("push: apns disabled (CHALK_APNS_* unset)")
 	}
 
 	authDeps := &auth.HTTPDeps{
@@ -407,6 +431,8 @@ func run(args []string) error {
 		SlowRequest:      cfg.Oplog.SlowRequest,
 		// 65-3: nil if push is disabled.
 		Push: pushSender,
+		// 136-4b: nil if push is disabled or CHALK_APNS_* is unset.
+		APNs: apnsSender,
 	})
 	if err != nil {
 		return fmt.Errorf("server: %w", err)

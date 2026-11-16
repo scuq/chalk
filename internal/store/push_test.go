@@ -45,7 +45,7 @@ func TestPushSubscriptions(t *testing.T) {
 	auth := keyBytes(7, 16)
 	sub := func(token []byte, endpoint string, scope PushScope) PushSubscription {
 		t.Helper()
-		p, err := s.UpsertPushSubscription(ctx, token, endpoint, p256dh, auth, scope, vapidKey)
+		p, err := s.UpsertPushSubscription(ctx, token, PushKindWebPush, endpoint, p256dh, auth, scope, vapidKey)
 		if err != nil {
 			t.Fatalf("upsert %s: %v", endpoint, err)
 		}
@@ -92,17 +92,17 @@ func TestPushSubscriptions(t *testing.T) {
 	})
 
 	t.Run("an unknown token and bad input are refused", func(t *testing.T) {
-		if _, err := s.UpsertPushSubscription(ctx, keyBytes(9, 32), "https://push.example/x", p256dh, auth, PushScopeDMs, vapidKey); !errors.Is(err, ErrNotFound) {
+		if _, err := s.UpsertPushSubscription(ctx, keyBytes(9, 32), PushKindWebPush, "https://push.example/x", p256dh, auth, PushScopeDMs, vapidKey); !errors.Is(err, ErrNotFound) {
 			t.Fatalf("unknown token: %v", err)
 		}
 		tok := mkSession(alice)
-		if _, err := s.UpsertPushSubscription(ctx, tok, "https://push.example/x", p256dh, auth, PushScope("loud"), vapidKey); err == nil {
+		if _, err := s.UpsertPushSubscription(ctx, tok, PushKindWebPush, "https://push.example/x", p256dh, auth, PushScope("loud"), vapidKey); err == nil {
 			t.Fatal("bad scope accepted")
 		}
-		if _, err := s.UpsertPushSubscription(ctx, tok, "https://push.example/x", keyBytes(4, 64), auth, PushScopeDMs, vapidKey); err == nil {
+		if _, err := s.UpsertPushSubscription(ctx, tok, PushKindWebPush, "https://push.example/x", keyBytes(4, 64), auth, PushScopeDMs, vapidKey); err == nil {
 			t.Fatal("short p256dh accepted")
 		}
-		if _, err := s.UpsertPushSubscription(ctx, tok, "https://push.example/x", p256dh, keyBytes(7, 15), PushScopeDMs, vapidKey); err == nil {
+		if _, err := s.UpsertPushSubscription(ctx, tok, PushKindWebPush, "https://push.example/x", p256dh, keyBytes(7, 15), PushScopeDMs, vapidKey); err == nil {
 			t.Fatal("short auth accepted")
 		}
 		if n := count(alice); n != 0 {
@@ -136,15 +136,15 @@ func TestPushSubscriptions(t *testing.T) {
 		sub(bt, "https://push.example/lb", PushScopeAll)
 		both := []uuid.UUID{alice, bob}
 
-		dm, err := s.ListPushSubscriptionsForUsers(ctx, both, true, vapidKey)
+		dm, err := s.ListPushSubscriptionsForUsers(ctx, both, true, []string{vapidKey})
 		if err != nil || len(dm) != 2 {
 			t.Fatalf("dm list: %v, %d rows", err, len(dm))
 		}
-		ch, err := s.ListPushSubscriptionsForUsers(ctx, both, false, vapidKey)
+		ch, err := s.ListPushSubscriptionsForUsers(ctx, both, false, []string{vapidKey})
 		if err != nil || len(ch) != 1 || ch[0].UserID != bob {
 			t.Fatalf("channel list: %v, %+v", err, ch)
 		}
-		if none, err := s.ListPushSubscriptionsForUsers(ctx, nil, true, vapidKey); err != nil || none != nil {
+		if none, err := s.ListPushSubscriptionsForUsers(ctx, nil, true, []string{vapidKey}); err != nil || none != nil {
 			t.Fatalf("empty input: %v, %+v", err, none)
 		}
 
@@ -153,7 +153,7 @@ func TestPushSubscriptions(t *testing.T) {
 			`UPDATE sessions SET expires_at = now() - interval '1 minute' WHERE token = $1`, bt); err != nil {
 			t.Fatal(err)
 		}
-		dm, _ = s.ListPushSubscriptionsForUsers(ctx, both, true, vapidKey)
+		dm, _ = s.ListPushSubscriptionsForUsers(ctx, both, true, []string{vapidKey})
 		if len(dm) != 1 || dm[0].UserID != alice {
 			t.Fatalf("expired session still listed: %+v", dm)
 		}
@@ -199,10 +199,10 @@ func TestPushSubscriptions(t *testing.T) {
 	t.Run("a subscription made with another key is not listed", func(t *testing.T) {
 		dave := mkUser("dave")
 		tok := mkSession(dave)
-		if _, err := s.UpsertPushSubscription(ctx, tok, "https://push.example/old", p256dh, auth, PushScopeDMs, "OLDKEY"); err != nil {
+		if _, err := s.UpsertPushSubscription(ctx, tok, PushKindWebPush, "https://push.example/old", p256dh, auth, PushScopeDMs, "OLDKEY"); err != nil {
 			t.Fatal(err)
 		}
-		if got, _ := s.ListPushSubscriptionsForUsers(ctx, []uuid.UUID{dave}, true, vapidKey); len(got) != 0 {
+		if got, _ := s.ListPushSubscriptionsForUsers(ctx, []uuid.UUID{dave}, true, []string{vapidKey}); len(got) != 0 {
 			t.Fatalf("stale subscription listed: %+v", got)
 		}
 		got, err := s.GetPushSubscriptionForSession(ctx, tok)
@@ -210,8 +210,53 @@ func TestPushSubscriptions(t *testing.T) {
 			t.Fatalf("get: %v %+v", err, got)
 		}
 		sub(tok, "https://push.example/new", PushScopeDMs)
-		if got, _ := s.ListPushSubscriptionsForUsers(ctx, []uuid.UUID{dave}, true, vapidKey); len(got) != 1 {
+		if got, _ := s.ListPushSubscriptionsForUsers(ctx, []uuid.UUID{dave}, true, []string{vapidKey}); len(got) != 1 {
 			t.Fatalf("resubscribed row not listed: %+v", got)
+		}
+	})
+
+	t.Run("an APNs device is listed only under its own key", func(t *testing.T) {
+		apnsUser := mkUser("kim")
+		phone, laptop := mkSession(apnsUser), mkSession(apnsUser)
+		const apnsKey = "at.73c.chalk/production"
+		got, err := s.UpsertPushSubscription(ctx, phone, PushKindAPNs, "00fc13ad", p256dh, auth, PushScopeDMs, apnsKey)
+		if err != nil || got.Kind != PushKindAPNs || got.Endpoint != "00fc13ad" || got.VAPIDKey != apnsKey {
+			t.Fatalf("upsert APNs: %v %+v", err, got)
+		}
+		if web := sub(laptop, "https://push.example/erin", PushScopeDMs); web.Kind != PushKindWebPush {
+			t.Fatalf("web push row has kind %q", web.Kind)
+		}
+		users := []uuid.UUID{apnsUser}
+		if l, _ := s.ListPushSubscriptionsForUsers(ctx, users, true, []string{vapidKey}); len(l) != 1 || l[0].Kind != PushKindWebPush {
+			t.Fatalf("web push key lists %+v", l)
+		}
+		if l, _ := s.ListPushSubscriptionsForUsers(ctx, users, true, []string{apnsKey}); len(l) != 1 || l[0].Kind != PushKindAPNs {
+			t.Fatalf("APNs key lists %+v", l)
+		}
+		if l, _ := s.ListPushSubscriptionsForUsers(ctx, users, true, []string{vapidKey, apnsKey}); len(l) != 2 {
+			t.Fatalf("both keys list %d rows", len(l))
+		}
+		if l, _ := s.ListPushSubscriptionsForUsers(ctx, users, true, nil); l != nil {
+			t.Fatalf("no keys lists %+v", l)
+		}
+		if l, _ := s.ListPushSubscriptionsForUsers(ctx, users, true, []string{"at.73c.chalk/sandbox"}); len(l) != 0 {
+			t.Fatalf("sandbox key lists %+v", l)
+		}
+		if _, err := s.UpsertPushSubscription(ctx, phone, PushKind("fcm"), "x", p256dh, auth, PushScopeDMs, apnsKey); err == nil {
+			t.Fatal("an unknown kind was stored")
+		}
+		if _, err := pool.Exec(ctx, `UPDATE push_subscriptions SET kind = 'fcm' WHERE user_id = $1`, apnsUser); err == nil {
+			t.Fatal("the kind check accepted fcm")
+		}
+		back, err := s.GetPushSubscriptionForSession(ctx, phone)
+		if err != nil || back.Kind != PushKindAPNs {
+			t.Fatalf("get APNs: %v %+v", err, back)
+		}
+		if err := s.DeletePushSubscriptionForSession(ctx, phone); err != nil {
+			t.Fatal(err)
+		}
+		if l, _ := s.ListPushSubscriptionsForUsers(ctx, users, true, []string{apnsKey}); len(l) != 0 {
+			t.Fatalf("unsubscribed APNs row still listed: %+v", l)
 		}
 	})
 
@@ -316,7 +361,7 @@ func TestPushSubscriptions(t *testing.T) {
 			t.Fatal(err)
 		}
 		tok := mkSession(guest)
-		if _, err := s.UpsertPushSubscription(ctx, tok, "https://push.example/g", p256dh, auth, PushScopeDMs, vapidKey); !errors.Is(err, ErrNotFound) {
+		if _, err := s.UpsertPushSubscription(ctx, tok, PushKindWebPush, "https://push.example/g", p256dh, auth, PushScopeDMs, vapidKey); !errors.Is(err, ErrNotFound) {
 			t.Fatalf("guest upsert: %v", err)
 		}
 	})

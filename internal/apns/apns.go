@@ -317,6 +317,7 @@ type Device struct {
 type Sender struct {
 	key   *Key
 	topic string
+	env   Environment
 	base  string
 	hc    *http.Client
 	now   func() time.Time
@@ -333,6 +334,7 @@ func NewSender(key *Key, topic string, env Environment, timeout time.Duration, o
 	return &Sender{
 		key:   key,
 		topic: topic,
+		env:   env,
 		base:  env.host(),
 		hc:    webpush.NewHTTP2Client(timeout, opts...),
 		now:   time.Now,
@@ -341,6 +343,20 @@ func NewSender(key *Key, topic string, env Environment, timeout time.Duration, o
 
 // Topic returns the bundle id that the Sender sends in apns-topic.
 func (s *Sender) Topic() string { return s.topic }
+
+// Environment returns the APNs environment that the Sender sends to.
+func (s *Sender) Environment() Environment { return s.env }
+
+// Key returns the subscription key of the Sender. A registration row holds
+// this key if the app made it for the topic and the environment of the Sender.
+func (s *Sender) Key() string { return SubscriptionKey(s.topic, s.env) }
+
+// SubscriptionKey returns the key that a registration row holds for topic and
+// env: the topic, a "/", and the environment. A VAPID public key never holds
+// "/", so the two kinds of key cannot be equal.
+func SubscriptionKey(topic string, env Environment) string {
+	return topic + "/" + string(env)
+}
 
 // notification is the JSON body of one push. It has exactly two keys. The
 // aps key holds the constant fallback alert, mutable-content 1 (this makes

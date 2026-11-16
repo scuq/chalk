@@ -489,6 +489,9 @@ func TestSendRefusesNonPublicAddress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if s.Key() != testTopic+"/sandbox" || s.Environment() != Sandbox {
+		t.Fatalf("key %q, environment %q", s.Key(), s.Environment())
+	}
 	if s.base != "https://api.sandbox.push.apple.com" || s.Topic() != testTopic {
 		t.Fatalf("base %q, topic %q", s.base, s.Topic())
 	}

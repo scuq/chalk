@@ -35,8 +35,8 @@ func TestReminderSweepPushesAwayUsers(t *testing.T) {
 	if len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
 		t.Fatalf("pushed to %v, want %v", got, want)
 	}
-	if !f.data.gotIsDM || f.data.gotKey != "CURKEY" {
-		t.Fatalf("subscriptions asked with isDM=%v key=%q", f.data.gotIsDM, f.data.gotKey)
+	if !f.data.gotIsDM || len(f.data.gotKeys) != 1 || f.data.gotKeys[0] != "CURKEY" {
+		t.Fatalf("subscriptions asked with isDM=%v keys=%q", f.data.gotIsDM, f.data.gotKeys)
 	}
 	for _, s := range f.sender.sent {
 		if len(s.payload) != 3 || s.payload["v"] != float64(1) || s.payload["kind"] != "reminder" ||

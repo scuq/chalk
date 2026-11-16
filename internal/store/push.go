@@ -32,8 +32,26 @@ func (sc PushScope) Valid() bool {
 	return sc == PushScopeDMs || sc == PushScopeAll
 }
 
-// A PushSubscription is one browser's Web Push registration. It does not
-// carry the session token it is bound to.
+// A PushKind tells which service delivers the push of a subscription.
+type PushKind string
+
+// The values of PushKind.
+const (
+	// PushKindWebPush is a browser subscription. Endpoint is a URL.
+	PushKindWebPush PushKind = "webpush"
+	// PushKindAPNs is an app install of the iOS shell. Endpoint is the
+	// APNs device token in lowercase hexadecimal.
+	PushKindAPNs PushKind = "apns"
+)
+
+// Valid reports whether k is one of the values of PushKind.
+func (k PushKind) Valid() bool {
+	return k == PushKindWebPush || k == PushKindAPNs
+}
+
+// A PushSubscription is one push registration of a browser or of an iOS app
+// install. Kind tells which. It does not carry the session token it is bound
+// to.
 type PushSubscription struct {
 	ID         uuid.UUID
 	UserID     uuid.UUID
@@ -42,20 +60,21 @@ type PushSubscription struct {
 	Auth       []byte // 16 bytes
 	Scope      PushScope
 	Generic    bool
-	VAPIDKey   string // 65-4: the VAPID public key the browser subscribed with
+	VAPIDKey   string   // 65-4: the key the row was made for, of either kind
+	Kind       PushKind // 136-4b: web push or APNs
 	CreatedAt  time.Time
 	LastUsedAt time.Time
 }
 
 // pushCols is the column list of every PushSubscription read. Its count,
 // the struct's field count and scanPush's argument count must match.
-const pushCols = `p.id, p.user_id, p.endpoint, p.p256dh, p.auth, p.scope, p.generic, p.vapid_key, p.created_at, p.last_used_at`
+const pushCols = `p.id, p.user_id, p.endpoint, p.p256dh, p.auth, p.scope, p.generic, p.vapid_key, p.kind, p.created_at, p.last_used_at`
 
 // scanPush reads one pushCols row into a PushSubscription.
 func scanPush(row pgx.Row) (PushSubscription, error) {
 	var p PushSubscription
 	err := row.Scan(
-		&p.ID, &p.UserID, &p.Endpoint, &p.P256dh, &p.Auth, &p.Scope, &p.Generic, &p.VAPIDKey, &p.CreatedAt, &p.LastUsedAt,
+		&p.ID, &p.UserID, &p.Endpoint, &p.P256dh, &p.Auth, &p.Scope, &p.Generic, &p.VAPIDKey, &p.Kind, &p.CreatedAt, &p.LastUsedAt,
 	)
 	return p, err
 }
@@ -80,13 +99,19 @@ func sessionMaxMicros() int64 {
 // same endpoint. If the user then has more than
 // MaxPushSubscriptionsPerUser rows, it deletes the oldest by created_at.
 //
-// vapidKey is the VAPID public key the browser subscribed with.
+// kind is [PushKindWebPush] or [PushKindAPNs]. Any other value gives an
+// error.
+//
+// vapidKey is the key that the row was made for. For a web push row it is
+// the VAPID public key that the browser subscribed with. For an APNs row it
+// is the key of the APNs sender, "<bundle id>/<environment>".
 //
 // It returns ErrNotFound if the token names no live session of a
 // non-guest user.
 func (s *Store) UpsertPushSubscription(
 	ctx context.Context,
 	sessionToken []byte,
+	kind PushKind,
 	endpoint string,
 	p256dh, auth []byte,
 	scope PushScope,
@@ -94,6 +119,9 @@ func (s *Store) UpsertPushSubscription(
 ) (PushSubscription, error) {
 	if !scope.Valid() {
 		return PushSubscription{}, fmt.Errorf("upsert push subscription: scope %q", scope)
+	}
+	if !kind.Valid() {
+		return PushSubscription{}, fmt.Errorf("upsert push subscription: kind %q", kind)
 	}
 	var out PushSubscription
 	err := s.withTx(ctx, func(tx pgx.Tx) error {
@@ -120,10 +148,10 @@ func (s *Store) UpsertPushSubscription(
 			return err
 		}
 		out, err = scanPush(tx.QueryRow(ctx,
-			`INSERT INTO push_subscriptions AS p (user_id, session_token, endpoint, p256dh, auth, scope, vapid_key)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7)
+			`INSERT INTO push_subscriptions AS p (user_id, session_token, endpoint, p256dh, auth, scope, vapid_key, kind)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 			 RETURNING `+pushCols,
-			userID, sessionToken, endpoint, p256dh, auth, string(scope), vapidKey,
+			userID, sessionToken, endpoint, p256dh, auth, string(scope), vapidKey, string(kind),
 		))
 		if err != nil {
 			return err
@@ -202,15 +230,20 @@ func (s *Store) TouchPushSubscription(ctx context.Context, id uuid.UUID) error {
 //
 // A subscription whose session expired does not qualify, even if
 // [Store.DeleteExpiredSessions] has not yet deleted the session row. A
-// subscription made with a VAPID key other than vapidKey does not qualify
-// either, because the push service refuses it.
+// subscription made with a key that is not in keys does not qualify either,
+// because the push service refuses it.
+//
+// keys holds the VAPID public key for web push rows and the APNs
+// subscription key for APNs rows. A VAPID key is base64url and never holds
+// "/". An APNs key always holds "/". One list therefore selects rows of both
+// kinds and never mixes them up. If keys is empty, the result is nil.
 func (s *Store) ListPushSubscriptionsForUsers(
 	ctx context.Context,
 	userIDs []uuid.UUID,
 	isDM bool,
-	vapidKey string,
+	keys []string,
 ) ([]PushSubscription, error) {
-	if len(userIDs) == 0 {
+	if len(userIDs) == 0 || len(keys) == 0 {
 		return nil, nil
 	}
 	rows, err := s.Pool.Query(ctx,
@@ -220,9 +253,9 @@ func (s *Store) ListPushSubscriptionsForUsers(
 		  WHERE p.user_id = ANY($1)
 		    AND ($2 OR p.scope = 'all')
 		    AND `+sessionLiveSQL("$3")+`
-		    AND p.vapid_key = $4
+		    AND p.vapid_key = ANY($4)
 		  ORDER BY p.user_id, p.created_at, p.id`,
-		userIDs, isDM, sessionMaxMicros(), vapidKey,
+		userIDs, isDM, sessionMaxMicros(), keys,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("list push subscriptions: %w", err)

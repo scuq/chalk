@@ -19,6 +19,12 @@ const (
 	TypePushSubscribe    = "push_subscribe"
 	TypePushSubscribeAck = "push_subscribe_ack"
 
+	// push_subscribe_apns stores the subscription of the iOS app for this
+	// session, replacing an earlier one. Payload PushSubscribeAPNsPayload.
+	// The server answers push_disabled if push is off or has no APNs sender.
+	TypePushSubscribeAPNs    = "push_subscribe_apns"
+	TypePushSubscribeAPNsAck = "push_subscribe_apns_ack"
+
 	// push_unsubscribe deletes the subscription of this session. No payload.
 	TypePushUnsubscribe    = "push_unsubscribe"
 	TypePushUnsubscribeAck = "push_unsubscribe_ack"
@@ -38,6 +44,11 @@ const (
 	// not the server's current one. Subscribe again with the key from
 	// push_state.
 	ErrCodePushKeyStale = "push_key_stale"
+
+	// ErrCodePushAPNsMismatch: the bundle id or the environment of the app
+	// is not the one of the server. The cause is another app, or a sandbox
+	// build against a production server.
+	ErrCodePushAPNsMismatch = "push_apns_mismatch"
 )
 
 // PushSubscribePayload is a browser PushSubscription. P256dh and Auth are
@@ -51,13 +62,29 @@ type PushSubscribePayload struct {
 	VAPIDPublicKey string `json:"vapid_public_key"`
 }
 
+// PushSubscribeAPNsPayload is the registration of the iOS app. Token is the
+// APNs device token in hexadecimal. P256dh and Auth are base64url: the public
+// key (65 bytes) and the authentication secret (16 bytes) that the app made
+// for itself. Scope is "dms" or "all". Topic and Environment are the bundle
+// id and the APNs environment that push_state shows.
+type PushSubscribeAPNsPayload struct {
+	Token       string `json:"token"`
+	P256dh      string `json:"p256dh"`
+	Auth        string `json:"auth"`
+	Scope       string `json:"scope"`
+	Topic       string `json:"topic"`
+	Environment string `json:"environment"`
+}
+
 // PushStatePayload is the server's view of push for one session.
 //
 // Enabled reports whether the server sends push. VAPIDPublicKey is the key a
 // browser must subscribe with, empty when Enabled is false. Subscribed
 // reports whether the session has a subscription. Endpoint and Scope describe
 // it. KeyCurrent reports whether the browser made that subscription with
-// VAPIDPublicKey. A subscription with KeyCurrent false gets no push.
+// VAPIDPublicKey. For an APNs subscription, KeyCurrent reports whether the
+// subscription was made for the key of the APNs sender. A subscription with
+// KeyCurrent false gets no push.
 type PushStatePayload struct {
 	Enabled        bool   `json:"enabled"`
 	VAPIDPublicKey string `json:"vapid_public_key,omitempty"`
@@ -65,4 +92,13 @@ type PushStatePayload struct {
 	Endpoint       string `json:"endpoint,omitempty"`
 	Scope          string `json:"scope,omitempty"`
 	KeyCurrent     bool   `json:"key_current"`
+
+	// APNsTopic and APNsEnvironment are the bundle id and the environment
+	// of the APNs sender. Both are empty if push is off or the server has
+	// no APNs sender. This is how the page learns that native push is
+	// available. Kind is the kind of the subscription of the session, and
+	// is empty if the session has none.
+	APNsTopic       string `json:"apns_topic,omitempty"`
+	APNsEnvironment string `json:"apns_environment,omitempty"`
+	Kind            string `json:"kind,omitempty"`
 }

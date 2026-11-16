@@ -158,6 +158,10 @@ type WSHandler struct {
 	// 65-4: the Web Push sender. Nil when push is disabled. Set by the
 	// Server after construction.
 	push *webpush.Sender
+
+	// 136-4b: the APNs sender. Nil when push or APNs is disabled. Set by the
+	// Server after construction.
+	apns apnsSender
 }
 
 // NewWSHandler constructs a handler. Phase 06 adds the presence/friends
@@ -862,7 +866,7 @@ func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 			h.handleVoiceState(ctx, c, conn, f)
 		case proto.TypePing: // 135-6
 			h.sendPong(ctx, c, f.Ref)
-		case proto.TypePushState, proto.TypePushSubscribe, proto.TypePushUnsubscribe: // 65-4
+		case proto.TypePushState, proto.TypePushSubscribe, proto.TypePushSubscribeAPNs, proto.TypePushUnsubscribe: // 65-4, 136-4b
 			h.handlePush(ctx, c, conn, f)
 		case proto.TypeReminderWakesSet: // 87-7
 			h.handleReminderWakesSet(ctx, c, conn, f)

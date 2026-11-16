@@ -5,9 +5,9 @@ package server
 // A sweep claims the wake records that are due (store.ClaimDueReminderWakes).
 // If a user has a device online, the sweep sends nothing for that user,
 // because the open client fires the reminder. For every other user, it sends
-// one push for each record to each subscription. The push holds the reminder
-// ID and nothing else. The server does not know the message, and the service
-// worker has no key.
+// one push for each record to each subscription, of a browser or of the iOS
+// app. The push holds the reminder ID and nothing else. The server does not
+// know the message, and the service worker has no key.
 
 import (
 	"context"
@@ -77,8 +77,8 @@ func (d *pushDispatcher) sweepReminders(ctx context.Context, now time.Time) (int
 	}
 	// A reminder is not a channel message, so the scope of a subscription
 	// does not apply. The value true for isDM selects the scope dms and the
-	// scope all.
-	subs, err := d.data.subscriptions(ctx, away, true, d.sender.PublicKey())
+	// scope all. The keys select web push rows and APNs rows.
+	subs, err := d.data.subscriptions(ctx, away, true, d.keys())
 	if err != nil {
 		return len(due), err
 	}

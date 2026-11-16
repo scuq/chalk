@@ -1,14 +1,18 @@
 package server
 
-// 65-5: the web push dispatcher.
+// 65-5: the push dispatcher.
 // When a new message is committed, the instance that published it sends a push.
 // The push goes to each channel member who is not the sender and has no online device.
+// 136-4b: the push goes to each subscription of the member, to a browser through web push
+// or to the iOS app through APNs. The sender follows the kind of the subscription.
+// Both kinds get the same payload bytes, and one cooldown covers all devices of a user.
 //
 // The payload holds no message content.
 // The server has only ciphertext, and pushPayload has no field for a body.
 // The payload carries the sender's handle, the name and kind of the channel, ids, and a badge count.
 // RFC 8291 encrypts the payload to the browser, and webpush pads it to one fixed length.
 // The push service therefore sees neither the names nor their length.
+// Apple gets the same ciphertext for an app device, in a body of one fixed length.
 //
 // The pubsub listener calls onMessage on its own goroutine, so onMessage only queues the event.
 // A small pool of workers does the database reads and the HTTP requests.
@@ -23,6 +27,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/scuq/chalk/internal/apns"
 	"github.com/scuq/chalk/internal/pubsub"
 	"github.com/scuq/chalk/internal/ratelimit"
 	"github.com/scuq/chalk/internal/store"
@@ -81,7 +86,7 @@ type pushData interface {
 	members(ctx context.Context, channelID uuid.UUID) ([]uuid.UUID, error)
 	online(ctx context.Context, userIDs []uuid.UUID) (map[uuid.UUID]bool, error)
 	handle(ctx context.Context, userID uuid.UUID) (string, error)
-	subscriptions(ctx context.Context, userIDs []uuid.UUID, isDM bool, vapidKey string) ([]store.PushSubscription, error)
+	subscriptions(ctx context.Context, userIDs []uuid.UUID, isDM bool, keys []string) ([]store.PushSubscription, error)
 	badges(ctx context.Context, userIDs []uuid.UUID) (map[uuid.UUID]int, error)
 	deleteSubscription(ctx context.Context, id uuid.UUID) error
 	touchSubscription(ctx context.Context, id uuid.UUID) error
@@ -95,10 +100,21 @@ type pushSender interface {
 	PublicKey() string
 }
 
+// apnsSender is the part of [apns.Sender] that the dispatcher and the WebSocket
+// handler use. Topic and Environment are the bundle id and the APNs environment.
+// Key is the subscription key of rows that this sender can push to.
+type apnsSender interface {
+	Send(ctx context.Context, dev apns.Device, payload []byte, opts apns.Options) error
+	Topic() string
+	Environment() apns.Environment
+	Key() string
+}
+
 // pushDispatcher queues message events and sends their pushes.
 type pushDispatcher struct {
 	data       pushData
 	sender     pushSender
+	apns       apnsSender // 136-4b: nil if APNs is off
 	instanceID string
 	logger     *log.Logger
 	cooldown   *ratelimit.RateLimiter
@@ -106,10 +122,12 @@ type pushDispatcher struct {
 }
 
 // newPushDispatcher returns a dispatcher that sends only the events that instanceID published.
-func newPushDispatcher(data pushData, sender pushSender, instanceID string, logger *log.Logger) *pushDispatcher {
+// If native is nil, rows of kind APNs get no push.
+func newPushDispatcher(data pushData, sender pushSender, native apnsSender, instanceID string, logger *log.Logger) *pushDispatcher {
 	return &pushDispatcher{
 		data:       data,
 		sender:     sender,
+		apns:       native,
 		instanceID: instanceID,
 		logger:     logger,
 		cooldown:   ratelimit.New(1, pushCooldown),
@@ -196,7 +214,7 @@ func (d *pushDispatcher) dispatch(ctx context.Context, ev pubsub.Event) {
 	if len(away) == 0 {
 		return
 	}
-	subs, err := d.data.subscriptions(ctx, away, ch.IsDM, d.sender.PublicKey())
+	subs, err := d.data.subscriptions(ctx, away, ch.IsDM, d.keys())
 	if err != nil {
 		d.logger.Printf("push: subscriptions: %v", err)
 		return
@@ -262,18 +280,44 @@ func (d *pushDispatcher) dispatch(ctx context.Context, ev pubsub.Event) {
 	}
 }
 
+// keys returns the subscription keys that the dispatcher can push to: the VAPID
+// public key, and the APNs key if APNs is on. Rows of any other key are not listed.
+func (d *pushDispatcher) keys() []string {
+	keys := []string{d.sender.PublicKey()}
+	if d.apns != nil {
+		keys = append(keys, d.apns.Key())
+	}
+	return keys
+}
+
+// nativeOptions maps the web push options to APNs options. It keeps the TTL,
+// sets the priority to high, and sets no collapse id.
+func nativeOptions(opts webpush.Options) apns.Options {
+	return apns.Options{TTL: opts.TTL, Priority: apns.PriorityHigh}
+}
+
 // send posts one push to sub.
+// It uses the sender that matches sub.Kind.
+// If sub is an APNs row and APNs is off, it does nothing: it does not send, delete, or touch the row.
 // On success, it touches the subscription.
-// If the push service answers [webpush.ErrGone], it deletes the subscription.
+// If the push service answers [webpush.ErrGone] or [apns.ErrGone], it deletes the subscription.
 // After any other error, it only logs.
 func (d *pushDispatcher) send(ctx context.Context, sub store.PushSubscription, body []byte, opts webpush.Options) {
-	err := d.sender.Send(ctx, webpush.Subscription{Endpoint: sub.Endpoint, P256dh: sub.P256dh, Auth: sub.Auth}, body, opts)
+	var err error
+	switch {
+	case sub.Kind == store.PushKindAPNs && d.apns != nil:
+		err = d.apns.Send(ctx, apns.Device{Token: sub.Endpoint, P256dh: sub.P256dh, Auth: sub.Auth}, body, nativeOptions(opts))
+	case sub.Kind == store.PushKindAPNs:
+		return
+	default:
+		err = d.sender.Send(ctx, webpush.Subscription{Endpoint: sub.Endpoint, P256dh: sub.P256dh, Auth: sub.Auth}, body, opts)
+	}
 	switch {
 	case err == nil:
 		if terr := d.data.touchSubscription(ctx, sub.ID); terr != nil {
 			d.logger.Printf("push: touch %s: %v", sub.ID, terr)
 		}
-	case errors.Is(err, webpush.ErrGone):
+	case errors.Is(err, webpush.ErrGone), errors.Is(err, apns.ErrGone):
 		if derr := d.data.deleteSubscription(ctx, sub.ID); derr != nil {
 			d.logger.Printf("push: delete %s: %v", sub.ID, derr)
 		}
@@ -334,8 +378,8 @@ func (s storePushData) handle(ctx context.Context, userID uuid.UUID) (string, er
 	return m[userID], nil
 }
 
-func (s storePushData) subscriptions(ctx context.Context, userIDs []uuid.UUID, isDM bool, vapidKey string) ([]store.PushSubscription, error) {
-	return s.st.ListPushSubscriptionsForUsers(ctx, userIDs, isDM, vapidKey)
+func (s storePushData) subscriptions(ctx context.Context, userIDs []uuid.UUID, isDM bool, keys []string) ([]store.PushSubscription, error) {
+	return s.st.ListPushSubscriptionsForUsers(ctx, userIDs, isDM, keys)
 }
 
 func (s storePushData) badges(ctx context.Context, userIDs []uuid.UUID) (map[uuid.UUID]int, error) {

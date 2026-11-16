@@ -420,14 +420,11 @@ The user must trust it, in the same way as the desktop app.
 - The server pin, the session cookie, and all crypto stay in the page.
   They stay keyed to the server origin.
 
-The shell has no web push, so phase 136 designs a native push sender in chalkd.
+The shell has no web push, so phase 136 adds a native push sender in chalkd.
 The sender uses the Apple Push Notification service (APNs), and it adds a second third party after web push.
-Apple sees only ciphertext and the device token.
-The app makes its own key pair and authentication secret.
-chalkd encrypts the payload to them, as in web push, and a Notification Service Extension in the app decrypts it.
-If the extension fails, the notification has a constant text.
-This is designed and not yet sending: chalkd builds no sender yet (136-4a is a package with no caller).
-The full third-party section comes with 136-4b.
+See "Third parties: APNs (phase 136)".
+chalkd can send to Apple since 136-4b.
+No client registers a device yet, so no push goes out until 136-4d.
 Passkeys possibly do not work in the web view, because associated domains are compiled into the app.
 Password with TOTP is not affected.
 This is unmeasured.
@@ -564,6 +561,90 @@ key and the table contain no message content. Claim 2 holds. The attack
 continues until the operator runs `chalkctl push rotate-key --yes`. After
 the rotation, the stored subscriptions no longer match the key, and chalkd
 does not use them. Each device must subscribe again.
+
+## Third parties: APNs (phase 136)
+
+The iOS shell has no web push, so chalkd sends a push to the app through the Apple Push Notification service (APNs).
+Apple is a second third party for push, after the push services of web push (see "Third parties: web push (phase 65)").
+chalkd contacts Apple only if all of these are true:
+
+- The operator turned push on with `CHALK_PUSH_ENABLED` and set the `CHALK_APNS_*` values.
+- A user turned push on for one device of the app.
+- That app gave chalkd a registration.
+
+Without all three, chalkd sends nothing to Apple.
+Guests cannot register.
+The app sends its registration to chalkd only over the sealed WebSocket (phase 83).
+A network attacker therefore cannot swap the device token or the key of the app.
+
+Slice 136-4b built the server side.
+The registration from the app is not built, because it waits for 136-4d.
+The text below states what the design does once both parts exist.
+
+### What Apple learns from each push
+
+For each push, Apple sees:
+
+- The device token. Apple minted it, so it knows the device.
+- The bundle id of the app, in the `apns-topic` header.
+- The source address of chalkd.
+- The time of each push. Apple can tell how often a device gets pushes and when.
+  This is the largest leak, as for web push, and chalk does not defend against it (see "Traffic analysis").
+- The provider token. It names the team id and the key id of the Apple developer team.
+
+Apple does not learn the content, the sender, or the channel.
+
+- The body always holds the same constant alert text, and one ciphertext.
+- The ciphertext is RFC 8291 output of the same code as web push.
+  chalkd encrypts it to a key pair that the app made.
+  Apple has no key.
+- The ciphertext has one fixed length, so every body has the same size.
+- The headers are constant: push type alert, priority 10, expiration at now plus 24 hours, and no collapse id.
+  No header names a channel or a sender.
+
+The plaintext of a push is the same as for web push, and it is the same bytes for every device of a user.
+It holds the sender handle, the channel name, ids, and a badge count, and it holds no message content.
+The cooldown is also the same.
+A user gets at most one message push per channel in 60 seconds, across all devices, web and native.
+
+### What Apple learns from the registration
+
+The app registers with Apple on the device (136-4d).
+Apple learns that this device has the app installed, and it gives the app the device token.
+The token reaches chalkd only over the sealed WebSocket.
+
+### What chalkd stores
+
+A registration is one row of the table that web push uses.
+The row holds these values:
+
+- The device token.
+- The public key and the authentication secret that the app made.
+- The scope.
+- The subscription key (the bundle id and the environment).
+- Timestamps.
+
+It holds no message data.
+The row belongs to the login session and ends with it.
+A stolen database therefore yields no sent message through this feature, so claim 2 holds.
+
+### Theft of the APNs key
+
+The APNs key (the `.p8` file of Apple) is in the environment file of chalkd.
+Mallory can steal a copy of that file.
+Mallory can then send notifications to the devices of the app whose tokens Mallory knows.
+Mallory cannot read a past push, because every push is ciphertext.
+Mallory cannot make a ciphertext that the app accepts, because that needs the key of the device.
+
+One residual risk exists.
+If the notification extension of the app does not run or times out, iOS displays the alert text of the push as sent.
+A forged push with a chosen alert text would then display that text.
+The server always sends the constant fallback text.
+The extension of 136-4d must always replace the text.
+
+The key belongs to the Apple developer team, not to one chalk server.
+Only a server that holds the key of the team can push to the app.
+A user who enters another chalk server on the server screen gets no native push from it.
 
 ## Out of scope
 

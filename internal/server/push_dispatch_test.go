@@ -29,7 +29,7 @@ type fakePushData struct {
 	handles   map[uuid.UUID]string
 	subs      []store.PushSubscription
 	badgeN    map[uuid.UUID]int
-	gotKey    string
+	gotKeys   []string
 	gotIsDM   bool
 	gotUsers  []uuid.UUID
 	deleted   []uuid.UUID
@@ -51,8 +51,8 @@ func (f *fakePushData) online(context.Context, []uuid.UUID) (map[uuid.UUID]bool,
 func (f *fakePushData) handle(_ context.Context, id uuid.UUID) (string, error) {
 	return f.handles[id], nil
 }
-func (f *fakePushData) subscriptions(_ context.Context, users []uuid.UUID, isDM bool, key string) ([]store.PushSubscription, error) {
-	f.gotUsers, f.gotIsDM, f.gotKey = users, isDM, key
+func (f *fakePushData) subscriptions(_ context.Context, users []uuid.UUID, isDM bool, keys []string) ([]store.PushSubscription, error) {
+	f.gotUsers, f.gotIsDM, f.gotKeys = users, isDM, keys
 	var out []store.PushSubscription
 	for _, s := range f.subs {
 		for _, u := range users {
@@ -133,7 +133,7 @@ func newPushFixture() *pushFixture {
 		badgeN: map[uuid.UUID]int{bob: 3},
 	}
 	sender := &fakeSender{errs: map[string]error{}}
-	d := newPushDispatcher(data, sender, "inst-1", log.New(io.Discard, "", 0))
+	d := newPushDispatcher(data, sender, nil, "inst-1", log.New(io.Discard, "", 0))
 	return &pushFixture{data: data, sender: sender, d: d, alice: alice, bob: bob, carol: carol, dave: dave,
 		event: pubsub.Event{Kind: "message", MessageID: msgID, ChannelID: chID, InstanceID: "inst-1"}}
 }
@@ -161,8 +161,8 @@ func TestPushDispatchRecipients(t *testing.T) {
 			t.Fatalf("subscriptions asked for %s", u)
 		}
 	}
-	if f.data.gotKey != "CURKEY" || f.data.gotIsDM {
-		t.Fatalf("subscriptions asked with key %q isDM %v", f.data.gotKey, f.data.gotIsDM)
+	if len(f.data.gotKeys) != 1 || f.data.gotKeys[0] != "CURKEY" || f.data.gotIsDM {
+		t.Fatalf("subscriptions asked with keys %q isDM %v", f.data.gotKeys, f.data.gotIsDM)
 	}
 	if len(f.data.touched) != 2 || len(f.data.deleted) != 0 {
 		t.Fatalf("touched %d deleted %d", len(f.data.touched), len(f.data.deleted))
