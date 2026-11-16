@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.13.0 — 16 November 2026 — A demo server for app review, and new autumn scenes
 
 ### Added
 - `chalkctl review` runs a separate demo instance for app review, on its own hostname. A reviewer signs in to it with a username and a password and no TOTP code. You can turn the instance on and off, and production keeps its TOTP step.
