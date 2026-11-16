@@ -66,6 +66,15 @@ type InitParams struct {
 	VAPIDPrivateKey string
 	VAPIDSubject    string
 
+	// 136-4c: the APNs values for the iOS app. The template writes the block
+	// only if APNsKey is not empty. A fresh init has no APNs values.
+	// `chalkctl push apns set` adds them, and init --force keeps them.
+	APNsKey         string
+	APNsKeyID       string
+	APNsTeamID      string
+	APNsTopic       string
+	APNsEnvironment string
+
 	// 65-11: the value of CHALK_OUTBOUND_IPV4_ONLY in the env file.
 	OutboundIPv4Only bool
 

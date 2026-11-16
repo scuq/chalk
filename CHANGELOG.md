@@ -12,6 +12,9 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Added
+- `chalkctl push apns set` stores the Apple key for push notifications to the chalk iOS app, and `chalkctl push apns clear --yes` removes it. `chalkctl push status` shows the state. The key stays through `init --force`, `update`, and a restore. The iOS app itself is not available yet.
+
 ### Fixed
 - On a phone, the keyboard no longer covers the fields while you sign up or log in. The screen scrolls, and the field that you type in stays visible.
 

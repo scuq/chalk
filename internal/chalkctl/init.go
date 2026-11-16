@@ -253,6 +253,13 @@ func Init(o InitOptions) error {
 			return err
 		}
 	}
+	// 136-4c: the APNs key comes from Apple, so init cannot generate it. If
+	// the deployment exists, init --force keeps the values that the env file
+	// holds. Without this, the render below drops them.
+	var apnsSet APNsSettings
+	if initialized {
+		apnsSet = keepAPNs(o.EnvPath, o.logf)
+	}
 	self, err := os.Executable()
 	if err != nil || self == "" {
 		self = "/usr/local/bin/chalkctl" // sane default for the timer
@@ -314,6 +321,13 @@ func Init(o InitOptions) error {
 		VAPIDPublicKey:  vapidPub,
 		VAPIDPrivateKey: vapidPriv,
 		VAPIDSubject:    pushSubject(cfg.PushSubject, cfg.Domain),
+
+		// 136-4c: the template writes the APNs block only if the key is set.
+		APNsKey:         apnsSet.Key,
+		APNsKeyID:       apnsSet.KeyID,
+		APNsTeamID:      apnsSet.TeamID,
+		APNsTopic:       apnsSet.Topic,
+		APNsEnvironment: apnsSet.Environment,
 
 		// 65-11: the env file always carries the value, true or false.
 		OutboundIPv4Only: cfg.OutboundIPv4Only,

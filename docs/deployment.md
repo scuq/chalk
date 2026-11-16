@@ -63,6 +63,11 @@ All flags are also available as `CHALK_*` env vars (e.g. `--listen` ↔ `CHALK_L
 | — | `CHALK_VAPID_PUBLIC_KEY` | (chalkctl-generated) | phase 65: web push public key, base64url. It must belong to the private key |
 | — | `CHALK_VAPID_PRIVATE_KEY` | (chalkctl-generated) | phase 65: web push private key, base64url. Keep it secret |
 | — | `CHALK_VAPID_SUBJECT` | `https://<domain>` | phase 65: your contact for the push services, a `mailto:` or `https:` URL |
+| — | `CHALK_APNS_KEY` | (unset) | phase 136: the APNs key (`.p8` file) as one base64 line. Keep it secret. `chalkctl push apns set` writes it. See “Native push to the iOS app” below |
+| — | `CHALK_APNS_KEY_ID` | (unset) | phase 136: the 10-character id of the APNs key. `chalkctl push apns set` writes it |
+| — | `CHALK_APNS_TEAM_ID` | (unset) | phase 136: the 10-character id of the Apple developer team. `chalkctl push apns set` writes it |
+| — | `CHALK_APNS_TOPIC` | (unset) | phase 136: the bundle id of the iOS app. `chalkctl push apns set` writes it |
+| — | `CHALK_APNS_ENV` | `production` | phase 136: `production` or `sandbox`. `chalkctl push apns set` writes it |
 | `--outbound-ipv4-only` | `CHALK_OUTBOUND_IPV4_ONLY` | `false` | phase 65-11: if `true`, push, link previews, and GIF search dial IPv4 only. SMTP mail ignores it. See “Outbound IPv4 only” below |
 | | `CHALK_VOICE_ENABLED` | `false` | phase 30: master switch for voice/video |
 | | `CHALK_VOICE_MAX_PARTICIPANTS` | `5` | mesh room cap (2..16) |
@@ -257,6 +262,62 @@ The reason is the text that the push service gives.
 Run `journalctl -u chalkd | grep 'push:'` to see it.
 A successful push gives no log line.
 If the push service answers 404 or 410, chalkd deletes the subscription without a log line.
+
+## Native push to the iOS app (phase 136)
+
+The iOS app of chalk has no web push. If push is on and the APNs values are
+set, chalkd sends a push for a new message or a due reminder to the app
+through the Apple Push Notification service (APNs). The push holds only
+ciphertext. The threat model describes what Apple sees. See
+[Third parties: APNs (phase 136)](threat-model.md#third-parties-apns-phase-136).
+
+Native push needs an APNs key (a `.p8` file). You get it from the Apple
+developer account of the team that signs the app. Only the developer of the
+app can give you this key. If you host a server and you do not have the key,
+the published app gets no native push from your server. Web push is not
+affected.
+
+The settings are five values in the env file:
+
+- `CHALK_APNS_KEY`, the key as one base64 line
+- `CHALK_APNS_KEY_ID`, the key id
+- `CHALK_APNS_TEAM_ID`, the team id
+- `CHALK_APNS_TOPIC`, the bundle id of the app
+- `CHALK_APNS_ENV`, `production` or `sandbox`
+
+The key, the key id, the team id, and the topic must all be set, or none of
+them. If push is on and only some are set, chalkd does not start. If
+`CHALK_APNS_ENV` is empty, chalkd uses `production`.
+
+Commands:
+
+    chalkctl push apns set --key-file AuthKey_ABC123DEFG.p8 --key-id ABC123DEFG --team-id TEAM456XYZ --topic com.cyberdyne.chalk
+    chalkctl push apns set ... --sandbox    # for an app that Xcode installed
+    chalkctl push status                    # the apns line shows the settings, not the key
+    chalkctl push apns clear --yes          # empty the five values and restart chalkd
+
+`set` checks the key and the ids, writes the five values into the env file,
+and restarts chalkd. If a check fails, `set` changes nothing. It never prints
+the key. It does not write to the chalkctl config file, because that file is
+not for secrets. If push is off, `set` tells you to run `chalkctl push enable`.
+After `set`, you can delete the key file, because the env file holds the key.
+
+Use `--sandbox` for an app that Xcode installed. An app from TestFlight or the
+App Store needs production, which is the default. A push to the wrong
+environment fails, and chalkd then removes the device rows.
+
+`clear` stops native push to every iOS app of this server, so it needs
+`--yes`.
+
+- `init --force` keeps the values. It drops an incomplete set with a warning.
+- `update` leaves the lines as they are. It cannot backfill them, because the
+  key comes from Apple.
+- `restore` carries a complete set from the archive. It does not carry an
+  incomplete set.
+
+CAUTION: Protect the env file as you protect the VAPID private key. A holder
+of the APNs key can send notifications to devices of the app. The holder
+cannot read a push, because every push is ciphertext.
 
 ## Outbound IPv4 only (phase 65-11)
 

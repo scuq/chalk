@@ -526,22 +526,32 @@ func runMaint(args []string) error {
 }
 
 // runPush runs `chalkctl push` (65-3): status, enable, disable, or rotate-key.
+// It also runs `push apns set` and `push apns clear` (136-4c). These two take
+// two words, so the switch joins them into one name.
 func runPush(args []string) error {
 	fs := flag.NewFlagSet("push", flag.ContinueOnError)
 	var (
 		configPath = fs.String("config", chalkctl.DefaultConfigPath, "config file")
 		envPath    = fs.String("env", chalkctl.DefaultEnvPath, "env file path")
-		yes        = fs.Bool("yes", false, "with `rotate-key`: confirm the key change (each device gets no push until it opens chalk)")
+		yes        = fs.Bool("yes", false, "with `rotate-key`: confirm the key change (each device gets no push until it opens chalk); with `apns clear`: confirm")
+		keyFile    = fs.String("key-file", "", "with `apns set`: the .p8 file of the APNs key from Apple")
+		keyID      = fs.String("key-id", "", "with `apns set`: the 10-character id of the APNs key")
+		teamID     = fs.String("team-id", "", "with `apns set`: the 10-character id of the Apple developer team")
+		topic      = fs.String("topic", "", "with `apns set`: the bundle id of the iOS app")
+		sandbox    = fs.Bool("sandbox", false, "with `apns set`: use the APNs sandbox (apps from Xcode). The default is production (TestFlight, App Store)")
 	)
 	rest, err := parsePositional(fs, args)
 	if err != nil {
 		return err
 	}
-	const use = "usage: chalkctl push [status|enable|disable|rotate-key --yes]"
+	const use = "usage: chalkctl push [status|enable|disable|rotate-key --yes|apns set --key-file F --key-id K --team-id T --topic B [--sandbox]|apns clear --yes]"
 	sub := "status"
-	if len(rest) == 1 {
+	switch {
+	case len(rest) == 1:
 		sub = rest[0]
-	} else if len(rest) > 1 {
+	case len(rest) == 2 && rest[0] == "apns":
+		sub = "apns " + rest[1]
+	case len(rest) > 1:
 		return fmt.Errorf(use)
 	}
 	if err := chalkctl.RequireRoot(); err != nil {
@@ -557,6 +567,12 @@ func runPush(args []string) error {
 		return chalkctl.PushDisable(opts)
 	case "rotate-key":
 		return chalkctl.PushRotateKey(opts, *yes)
+	case "apns set":
+		return chalkctl.PushAPNsSet(opts, chalkctl.APNsSetOptions{
+			KeyFile: *keyFile, KeyID: *keyID, TeamID: *teamID, Topic: *topic, Sandbox: *sandbox,
+		})
+	case "apns clear":
+		return chalkctl.PushAPNsClear(opts, *yes)
 	default:
 		return fmt.Errorf(use)
 	}
@@ -741,6 +757,8 @@ Commands:
   wrapsig      status | enable [--force] | disable -- require signed channel keys
   serverkey    show | rotate --yes                -- the server identity clients pin (phase 83)
   push         status | enable | disable | rotate-key --yes -- web push notifications (phase 65)
+               apns set --key-file F --key-id K --team-id T --topic B [--sandbox] | apns clear --yes
+                 -- native push to the iOS app (phase 136)
   self-update  update the chalkctl binary itself
   rollback     re-pin the previous chalk image
   logs         tail the stack's logs

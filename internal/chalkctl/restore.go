@@ -48,6 +48,7 @@ import (
 //   - CHALK_ADMIN_* only seed a first-boot row that the restore replaces.
 //
 // The Web Push key pair is also carried, but only as a pair. See carryVAPID.
+// A complete set of APNs values is carried too. See carryAPNs.
 var carriedEnvKeys = []string{"CHALK_TOTP_ENC_KEY", "CHALK_SERVER_ID_KEY"}
 
 // RestoreWipeSQL is prepended to the dump so the load starts from a clean
@@ -302,7 +303,7 @@ func (o *RestoreOptions) loadDump(tr *tar.Reader) error {
 }
 
 // carryEnv writes the carriedEnvKeys values from the archived env file into
-// the live one.
+// the live one. Then it carries the Web Push key pair and the APNs values.
 func carryEnv(envPath string, archived []byte, logf func(string, ...any)) error {
 	old := parseEnvBytes(archived)
 	for _, key := range carriedEnvKeys {
@@ -321,7 +322,10 @@ func carryEnv(envPath string, archived []byte, logf func(string, ...any)) error 
 			logf("%s already matches the archive", key)
 		}
 	}
-	return carryVAPID(envPath, old, logf)
+	if err := carryVAPID(envPath, old, logf); err != nil {
+		return err
+	}
+	return carryAPNs(envPath, old, logf)
 }
 
 // carryVAPID copies the Web Push key pair (65-3) from the archived env into

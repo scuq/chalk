@@ -11,6 +11,8 @@ import (
 // `chalkctl push status` shows the switch, the subject, and the public key.
 // `enable` and `disable` change CHALK_PUSH_ENABLED and restart chalkd.
 // `rotate-key --yes` replaces the VAPID key pair and restarts chalkd.
+// `apns set` and `apns clear --yes` change the key for native push to the iOS
+// app (136-4c). See apns.go. `status` also shows one apns line.
 // Every subscription is bound to the old public key. After a rotation, no
 // device gets a push until it opens chalk and subscribes again.
 
@@ -63,6 +65,7 @@ func PushStatus(o PushOptions) error {
 	fmt.Fprintf(o.Out, "push enabled: %s\n", enabled)
 	fmt.Fprintf(o.Out, "subject:      %s\n", env["CHALK_VAPID_SUBJECT"])
 	fmt.Fprintf(o.Out, "public key:   %s\n", pub)
+	fmt.Fprintf(o.Out, "apns:         %s\n", apnsStatus(env))
 	return nil
 }
 

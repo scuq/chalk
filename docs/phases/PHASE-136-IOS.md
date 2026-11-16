@@ -4,7 +4,7 @@ A plan for a small iPhone app that wraps the chalk web page.
 The goal is that a voice call continues when the user switches apps or locks the screen.
 The design was written on 14 November 2026.
 
-**Status: in progress.** Slice 136-1 is built and measured on a device (2026-11-16). The gate passed. Slice 136-2 is built and checked on a device (2026-11-16), with two checks open. A follow-up of 136-2 has a device check open. Slice 136-4 is split into four parts: 136-4a and 136-4b are built (2026-11-16) and the parts 136-4c and 136-4d are not started. Slices 136-3, 136-5, and 136-6 are not started.
+**Status: in progress.** Slice 136-1 is built and measured on a device (2026-11-16). The gate passed. Slice 136-2 is built and checked on a device (2026-11-16), with two checks open. A follow-up of 136-2 has a device check open. Slice 136-4 is split into four parts: 136-4a, 136-4b, and 136-4c are built (2026-11-16) and the part 136-4d is not started. Slices 136-3, 136-5, and 136-6 are not started.
 **Tag:** `#ios` → `tools/where.sh -g ios` (this file and the `ios/` directory).
 
 Decisions from the owner:
@@ -82,17 +82,17 @@ The app is a thin shell on the pattern of the desktop app (phase 104, [PHASE-104
 
 ## Slices
 
-Slices 136-1 and 136-2 are built, and 136-4a and 136-4b are built. The other slices and parts are not started.
+Slices 136-1 and 136-2 are built, and 136-4a, 136-4b, and 136-4c are built. The other slices and parts are not started.
 
 | Slice | Content | Status |
 | --- | --- | --- |
 | 136-1 | Device test, the gate for the phase. See below. | done, 2026-11-16 |
 | 136-2 | The shell: server address screen, navigation rule, permission grant, safe areas, file download, app icon. | built, 2026-11-16. Open: the Settings toggle and the print window. See below. |
 | 136-3 | The web client knows the shell, and mutes on a phone call. See below. | not started |
-| 136-4 | Notifications in the shell: an APNs sender in chalkd. Four parts. See below. | 136-4a and 136-4b built, 2026-11-16. 136-4c and 136-4d not started. |
+| 136-4 | Notifications in the shell: an APNs sender in chalkd. Four parts. See below. | 136-4a, 136-4b, and 136-4c built, 2026-11-16. 136-4d not started. |
 | 136-4a | APNs sender package, provider token, config parsing. No account needed. | built, 2026-11-16 |
 | 136-4b | Device rows, a sealed WebSocket frame, fan-out from the dispatcher, chalkd builds the sender. No account needed. | built, 2026-11-16 |
-| 136-4c | chalkctl support for the key, and the `docs/deployment.md` env table. No account needed. | not started |
+| 136-4c | chalkctl support for the key, and the `docs/deployment.md` env table. No account needed. | built, 2026-11-16 |
 | 136-4d | Shell registration, the bridge, the extension, the tap, a device test. Needs the paid account. | not started |
 | 136-5 | Distribution through TestFlight. Needs the paid account. See below. | not started |
 | 136-6 | Optional: lock-screen call controls and audio route selection. Use CallKit only if a later iOS version removes the conflict. | not started |
@@ -396,11 +396,10 @@ Another chalk server that a user enters on the server screen gets no native push
 | --- | --- | --- | --- |
 | 136-4a | APNs sender package, provider token, config parsing. | no | built, 2026-11-16 |
 | 136-4b | Device rows (a migration). A sealed WebSocket frame that carries the device token, the public key, and the authentication secret. Fan-out to both senders from the dispatcher, reminders included. chalkd builds the sender at start. | no | built, 2026-11-16 |
-| 136-4c | chalkctl: set the key that the operator supplies, keep it on `--force`, backfill it on `update`, and carry it on restore. The env table in `docs/deployment.md`. | no | not started |
+| 136-4c | chalkctl: set the key that the operator supplies, keep it on `--force`, backfill it on `update`, and carry it on restore. The env table in `docs/deployment.md`. | no | built, 2026-11-16 |
 | 136-4d | Shell: registration for remote notifications, and a bridge that hands the token and the key to the page. The extension that decrypts. A tap that opens the channel. A device test. It needs the Push capability, an app group, and an extension target. | yes | not started |
 
-The env table in `docs/deployment.md` follows in 136-4c.
-Until 136-4c is done, the table does not list the variables, and the operator sets them by hand in `chalk.env`.
+The env table in `docs/deployment.md` lists the variables since 136-4c.
 
 #### Result of 136-4a
 
@@ -463,10 +462,8 @@ It uses only the Go standard library and the existing code of chalk, so it adds 
 
 - chalkd does not build or use the sender yet.
   The variables have no effect, and no push goes to Apple.
-- chalkctl does not know the variables.
-  The repo rule is that a server variable is not done until chalkctl generates it, keeps it on `--force`, and backfills it on `update`.
-  That is 136-4c.
-  chalkctl cannot generate this key, because the operator gets it from Apple and supplies it.
+- chalkctl did not know the variables in 136-4a.
+  136-4c closed this (see "Result of 136-4c").
 - Nothing was sent to the real APNs.
   The tests use a local TLS test server.
 - Verification: `go test ./internal/apns/ ./internal/webpush/ ./internal/config/` passes.
@@ -591,17 +588,67 @@ Tests:
 
 #### Limits of 136-4b
 
-- chalkctl does not know `CHALK_APNS_*` yet (136-4c).
-  The repo rule is that chalkctl must generate a server variable, keep it on `--force`, and backfill it on `update`.
-  Here chalkctl accepts the value from the operator.
-  Until then the operator sets the variables by hand in `chalk.env`.
-  The env table in `docs/deployment.md` also comes with 136-4c.
+- chalkctl did not know `CHALK_APNS_*` in 136-4b.
+  136-4c closed this (see "Result of 136-4c").
 - The page and the app do not send `push_subscribe_apns` yet (136-4d, which needs the paid account).
   No user can get a native push yet.
 - Nothing was sent to the real APNs, and no chalkd ran with APNs settings.
 - Verification: `go test ./...` passes.
   The store tests pass with `CHALK_TEST_PGURL` set to the dev Postgres, in a scratch database with all migrations.
   `test/integration` was not run, because its fixtures are not seeded on the dev database.
+
+#### Result of 136-4c
+
+chalkctl stores the APNs key that the operator supplies. No account is needed, and no real Apple key was used.
+The tests make P-256 keys.
+
+- `internal/chalkctl/apns.go` is new.
+  `chalkctl push apns set --key-file F --key-id K --team-id T --topic B [--sandbox]` reads the `.p8` file and checks the key and the ids with the parsers of `internal/apns`.
+  It writes the five `CHALK_APNS_*` values into `chalk.env` and restarts chalkd.
+  It replaces a line that exists, appends a line that is absent, and leaves other lines alone.
+  It never prints the key.
+- The key goes into the env file as one base64 line, which is the DER of the PEM body.
+  Bare base64 is also accepted, and its line breaks are removed.
+  A key file larger than 16 KiB is refused.
+- `set` writes nothing to the chalkctl config file, because the key is a secret and the config file is not.
+- If a check fails, `set` changes nothing and does not restart chalkd.
+- If push is off, `set` says so and names `chalkctl push enable`.
+  It also says that the key file can be deleted, because `chalk.env` holds the key.
+- `chalkctl push apns clear --yes` empties the five values and restarts chalkd.
+  It refuses without `--yes`, because native push to every iOS app of the server stops.
+- `chalkctl push status` has a new `apns:` line.
+  It shows `set (topic=... environment=... key id=...)`, `not set`, or `INCOMPLETE`.
+  With push on and an incomplete set, chalkd does not start (`config.Validate`, 136-4a).
+- Restore carries a complete set from the archive into the env file of the new host (`carryAPNs`).
+  An incomplete set is not carried, and restore logs it.
+  The device rows in the restored dump are bound to the topic and the environment, and the key cannot be made again.
+- `init --force`, with or without `--drop-db`, renders `chalk.env` from the template again.
+  `keepAPNs` reads a complete set from the old env file, so the new file keeps it.
+  An incomplete set is dropped with a warning.
+  The template writes the APNs block only if the key is set, so a fresh `init` has no APNs lines.
+- `update` needed no change.
+  It appends missing lines and never removes or rewrites a line, so the APNs lines survive it.
+
+The repo rule for a server variable is "generated fresh, preserved on `--force`, backfilled on `update`".
+It maps to the APNs values like this:
+
+| Rule | APNs values |
+| --- | --- |
+| Generated fresh | Not generated. The operator supplies the key with `push apns set`, because it comes from Apple. |
+| Preserved on `--force` | `keepAPNs`. |
+| Backfilled on `update` | Not applicable. `update` keeps the lines, and no value can be backfilled. |
+
+`cmd/chalkctl/main.go`: `runPush` accepts `apns set` and `apns clear`, with the flags `--key-file`, `--key-id`, `--team-id`, `--topic`, and `--sandbox`.
+The help text lists the commands.
+The env table and a section "Native push to the iOS app" are in `docs/deployment.md`.
+
+Tests: `internal/chalkctl/apns_test.go` checks the key line, `set`, the push-off note, the refusals, `clear`, the status line, the restore carry, and `init --force`.
+chalkctl has no full init harness, so the last test renders the template from the output of `keepAPNs`.
+
+Limits of 136-4c:
+
+- No real chalkctl ran as root, and no real Apple key was used.
+- Verification: `go test ./internal/chalkctl/` passes.
 
 ### 136-5 distribution
 
