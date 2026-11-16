@@ -10,6 +10,11 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Fixed
+- On a phone, the keyboard no longer covers the fields while you sign up or log in. The screen scrolls, and the field that you type in stays visible.
+
 ## v0.12.4 — 15 November 2026 — Push notifications for chat messages on iPhone and iPad
 
 ### Fixed

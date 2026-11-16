@@ -10,7 +10,7 @@ heading in `CHANGELOG.md`. The `/release` skill updates it as part of cutting a
 release. A stale pointer is worse than none, because it still reads as current.
 
 Phase 137 is the newest work. It is built, with all twelve slices, and the device checks are open.
-Phase 135 is built. All eight slices are built. The device checks are open.
+Phase 135 is built. All ten slices are built. The device checks are open.
 Phase 133 is built, with the voice room, and seven points of it are open.
 Phase 131 has two small open points.
 Phase 130 has two open points. The phase-doc index at the top of
@@ -82,7 +82,7 @@ A direct conversation shows the name with no "@", and the presence dot marks it.
 
 ## Phase 135 — phone: built, the device checks are open
 
-135-1 to 135-8, record in [phases/PHASE-135-PHONE.md](phases/PHASE-135-PHONE.md).
+135-1 to 135-10, record in [phases/PHASE-135-PHONE.md](phases/PHASE-135-PHONE.md).
 The chat list is the only phone layout. The menu button, the slide-in channel
 list, the Zuckermode setting, and the `roster.viewMode` preference are gone. The
 phone does not mount the sidebar (135-2). `VoiceSinks`, the audio of a call,
@@ -140,6 +140,10 @@ is a history layer, and the sidebar and the sheet call the same handlers.
   switch that drops frames. Not tested on a device: a real iPhone or Android
   phone that returns from the background, an installed iOS app with WebKit bug
   308073, and a laptop that wakes from sleep.
+- **The 135-10 device check is open.** Not tested on a real iPhone, in Safari
+  and in the iOS shell: that the keyboard does not cover the fields of sign-up
+  and login, and that a tap on the next field scrolls it into view. The probe
+  used Chromium with an iPhone 13 profile.
 - **The 135-9 device checks are open.** Not tested on a device: an installed
   iOS app that returns from the background keeps the microphone and camera
   without a prompt (5 s and 60 s), the camera returns without a prompt, the
@@ -582,7 +586,8 @@ same space.
   passed. The call held for more than 5 min in each case, and
   the shell has no `PushManager` and no `Notification`. Slice 136-2 is built
   (2026-11-16): the server address screen, the navigation rule, child windows,
-  downloads, safe areas, and the app icon. Open: two 136-2 device checks (the
+  downloads, safe areas, and the app icon. The follow-up of 136-2 (the server screen in the look of chalk, and a web view that
+  shrinks above the keyboard) is not checked on the device. Open: two 136-2 device checks (the
   Settings toggle that brings back the server screen, and the recovery-phrase
   print window), one measurement (a passkey sign-in in the shell), 136-3 (hide
   the Home Screen push hint in the shell), and the idea in 136-3 to

@@ -880,7 +880,7 @@ one group exists. Voice rows and hidden rows get no tag. When the row is short
 of space, the tag shortens before the channel name does. Every change is in the
 client.
 
-**135 — phone** (2026-11-13 to 2026-11-14). The phone had a drawer for the
+**135 — phone** (2026-11-13 to 2026-11-16). The phone had a drawer for the
 channel list, and a call had no single screen. 135-1 made the chat list the
 only phone layout and removed the drawer. 135-2 stopped the phone from
 mounting the sidebar. 135-3 made each layer a history entry, so the back
@@ -892,7 +892,8 @@ the camera flip. 135-8 added a sheet for a list row, opened by a long press or
 a right-click, with notifications, hide, group, and the owner's rename. 135-9
 parks the microphone and camera of a call when the connection drops, so the
 rejoin does not capture again and an installed iOS app does not show the
-permission prompt again. Every change is in the client. The device checks are open.
+permission prompt again. 135-10 made the sign-up and login screens scroll, so the
+keyboard does not cover a field. Every change is in the client. The device checks are open.
 
 **87 — message reminders** (2026-11-15). A user had no private way to bring
 one message back later. 87-1 added the rules: five presets and a custom time,

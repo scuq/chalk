@@ -10374,6 +10374,25 @@ body.chalk-resizing-y .chalk-composer-resizer {
     --chalk-fg-muted: var(--chalk-fg-dim);
   }
 
+  /* 135-10: The document does not scroll on a phone (135-4), so the sign-up
+     and login screens scroll inside their own box. The box has the visible
+     height, which the keyboard shrinks through --chalk-shell-h. A field
+     below the keyboard can then scroll into view. align-items:flex-start
+     and margin-block:auto on the child keep the card centered while it
+     fits and start it at the top when it does not. Plain centering cuts
+     off the top of a tall card. */
+  .chalk-auth {
+    min-height: 0;
+    height: var(--chalk-shell-h, 100dvh);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    align-items: flex-start;
+  }
+
+  .chalk-auth > * {
+    margin-block: auto;
+  }
+
   .chalk-app,
   .chalk-app--phase08b,
   .chalk-app--phase08b.chalk-app--rail,

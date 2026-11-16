@@ -4,7 +4,7 @@ A plan for a small iPhone app that wraps the chalk web page.
 The goal is that a voice call continues when the user switches apps or locks the screen.
 The design was written on 14 November 2026.
 
-**Status: in progress.** Slice 136-1 is built and measured on a device (2026-11-16). The gate passed. Slice 136-2 is built and checked on a device (2026-11-16), with two checks open. Slices 136-3 to 136-6 are not started.
+**Status: in progress.** Slice 136-1 is built and measured on a device (2026-11-16). The gate passed. Slice 136-2 is built and checked on a device (2026-11-16), with two checks open. A follow-up of 136-2 has a device check open. Slices 136-3 to 136-6 are not started.
 **Tag:** `#ios` → `tools/where.sh -g ios` (this file and the `ios/` directory).
 
 Decisions from the owner:
@@ -293,6 +293,24 @@ These checks passed:
 - An external link in a message opened in Safari, and chalk stayed open.
 - An attachment download opened the share sheet.
 - The app icon shows on the home screen.
+
+#### Follow-up of 136-2
+
+The owner made two changes on 16 November 2026, after the 136-2 commit.
+
+- The server screen (`ios/chalk/ServerScreen.swift`) uses the look of chalk, because the owner asked for chalk's green.
+  - The ground is `#050805`. The card is `#0a110b` with a 1 px `#24f077` border.
+  - The text is monospaced. The system monospaced design stands in for Hack.
+  - The label colour is `#74b08a`. The input text is `#24f077`, and its border is `#143a25`. The border turns `#24f077` on focus.
+  - The error box is `#ff5252`.
+  - The `connect` button has the style of `.chalk-auth-button`.
+  - The screen scrolls and dismisses the keyboard when scrolled.
+- The web view in `ios/chalk/ContentView.swift` ignores only the container safe area (`.ignoresSafeArea(.container)`).
+  In 136-2 it used `.ignoresSafeArea()`, which includes the keyboard area. SwiftUI then did not shrink the web view above the keyboard.
+  Together with the web bug of [135-10](PHASE-135-PHONE.md), this covered the sign-up fields in the shell.
+  The page still extends under the notch and the home indicator.
+
+The owner has not checked these two changes on the device. Check that the server screen shows the new look, and that the keyboard does not cover a field in the server screen or in sign-up.
 
 #### Open checklist
 

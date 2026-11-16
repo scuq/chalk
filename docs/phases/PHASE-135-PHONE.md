@@ -1,6 +1,6 @@
 # Phase 135 — phone: the chat list is the phone layout, with a call bar and a call view
 
-**Status:** built in code. All nine slices are built. 135-1 and 135-2 are built (2026-11-13). 135-3 to 135-9 are built (2026-11-14). The owner chose to build 135-6 after 135-7. The device checks of 135-3 to 135-9 are open, in the manual checklist.
+**Status:** built in code. All ten slices are built. 135-1 and 135-2 are built (2026-11-13). 135-3 to 135-9 are built (2026-11-14). 135-10 is built (2026-11-16). The owner chose to build 135-6 after 135-7. The device checks of 135-3 to 135-10 are open, in the manual checklist.
 **Tags:** `#zucker`, `#mobile`, `#roster`, `#themes`, `#voice`, `#websocket` → `tools/where.sh -g zucker`
 
 ## The problem
@@ -283,6 +283,23 @@ No claim about voice security goes on screen before `docs/threat-model.md` is ch
   `VoiceCall` has the new option `adoptMedia`. `join` calls the new `adoptParkedMedia` and falls back to `captureLocalMedia`, which is the old capture code moved unchanged. The new `detachMedia` returns the parked capture. `leave` closes an `adoptMedia` that no join used.
   `VoiceSession` has the new fields `parked` and `parkTimer` and the new methods `park`, `takeParked`, and `dropParked`. `leave(userInitiated, parkMedia)` parks the capture if `parkMedia` is true, and `handleWsDown` sets it. `dismissRejoin` drops the parked capture.
   Tests: new `parked-media.test.ts`.
+- **135-10 — the keyboard does not cover the sign-up and login fields.** Built 2026-11-16.
+  Found while the owner tested the iOS shell (phase 136). It also happens in iOS Safari.
+  Problem: on a phone, the on-screen keyboard covered the password field, the TOTP code field, and the check of three words of the encryption phrase.
+  Cause: since 135-4 the phone block of `theme.css` sets `html, body { height: var(--chalk-shell-h, 100dvh); overflow: hidden }`, so the document never scrolls.
+  The auth screens (`.chalk-auth`, a centered flex box with `min-height: 100dvh`) had no scroll box of their own.
+  A field below the visible area was unreachable.
+  Also, `useKeyboardSafeShell` resets `window.scrollY` to 0, which undid the scroll that WebKit does to reveal a field.
+  Fix in `theme.css`: on a phone, `.chalk-auth` has the height `var(--chalk-shell-h, 100dvh)`, `min-height: 0`, `overflow-y: auto`, `overscroll-behavior: contain`, and `align-items: flex-start`.
+  The rule `.chalk-auth > * { margin-block: auto }` keeps the card centered while it fits and starts it at the top when it does not. Plain centering cuts off the top of a tall card.
+  Fix in `viewport.ts`: `AUTH_SCROLLER` is `".chalk-auth"`.
+  `revealDelta(fieldTop, fieldBottom, boxTop, boxBottom, margin = 16)` is a pure function. It returns how far the box must scroll so the field is inside it with the margin. For a field taller than the box, it aligns the top of the field and not the bottom.
+  The private `revealFocusedAuthField` scrolls the closest `.chalk-auth`, not the window, so the focused input, textarea, or select is visible.
+  `sync` calls it after the scroll reset. The hook also listens to `focusin`, so a tap on the next field while the keyboard is open reveals that field.
+  Tests: five new tests in `viewport.test.ts`. Four cover `revealDelta` (a visible field, a field under the keyboard, a field above the box, a field taller than the box). One checks that the phone stylesheet has the `.chalk-auth` rule with the declarations above.
+  Verified: 2041 of 2041 web tests passed. A Playwright probe (`.claude/skills/run-chalk/probes/ui.mjs`, Chromium, iPhone 13 profile) walked sign-up to the password step and reduced the viewport to 380 px and to 190 px.
+  The auth screen scrolled inside the visible height. The focused field was visible (at 190 px the box scrolled 31 px). The document did not scroll, and the next button was reachable.
+  Not tested on a device: a real iPhone, in Safari and in the iOS shell. See the manual checklist.
 
 ## Verification of 135-1
 
@@ -489,7 +506,7 @@ Unknown: iOS can stop the capture tracks by itself in the background. Then `canA
 
 ## Left open
 
-- The 135-5, 135-6, 135-7, 135-8, and 135-9 device checks are open. See the manual checklist.
+- The 135-5, 135-6, 135-7, 135-8, 135-9, and 135-10 device checks are open. See the manual checklist.
 - The row sheet answers the loss of hide, group, and rename that 135-1 caused. Three things are still not on the phone: the order within a group, the channel header image, and the nick colour of a friend.
 - 135-6 has no HTTP catch-up fallback and no forced reload for a stuck iOS socket beyond the connect timeout. It has no detection of a frozen page by timer drift.
 - The call view has no board, no pop-outs, no layout toggle, and no debug drawer. The desktop panel keeps them.
@@ -535,3 +552,5 @@ Unknown: iOS can stop the capture tracks by itself in the background. Then `canA
 - [ ] 135-9: the camera is on before the drop. The camera returns without a prompt.
 - [ ] 135-9: a drop that does not recover. The microphone indicator goes off after 30 s.
 - [ ] 135-9: on a desktop, stop the server for 5 s in a call. The call rejoins with the same microphone.
+- [ ] 135-10: a real iPhone, in Safari and in the iOS shell. In sign-up and in login, tap the password field, the TOTP code field, and the field of the encryption-phrase check. The keyboard does not cover the field. The screen scrolls, and the next button is reachable.
+- [ ] 135-10: with the keyboard open, tap the next field. That field scrolls into view. Close the keyboard. The card is centered again.

@@ -11,7 +11,7 @@ struct ContentView: View {
                     model.loadFailed(reason)
                 }
                 .id(server)
-                .ignoresSafeArea()
+                .ignoresSafeArea(.container)
             } else {
                 ServerScreen(model: model)
             }

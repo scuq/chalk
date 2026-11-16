@@ -21,6 +21,10 @@
 // 135-4: index.html also asks Chromium browsers to shrink the layout
 // itself (interactive-widget=resizes-content). iOS Safari does not apply
 // that value yet, so iOS keeps this path.
+//
+// 135-10: the sign-up and login screens (.chalk-auth) scroll inside their
+// own box on a phone, because the document does not scroll. The hook
+// scrolls that box so the focused field stays above the keyboard.
 import { useEffect } from "preact/hooks";
 
 // The CSS custom property this module writes to <html>. theme.css falls
@@ -55,6 +59,49 @@ export function shellHeight(
   return Math.round(innerHeight > 0 ? Math.min(visualHeight, innerHeight) : visualHeight);
 }
 
+// The selector of the scrolling box of the sign-up and login screens.
+// 135-10: revealFocusedAuthField scrolls the closest match, not the window.
+export const AUTH_SCROLLER = ".chalk-auth";
+
+// The gap in pixels that revealDelta keeps between a field and the edge of
+// the box.
+const REVEAL_MARGIN = 16;
+
+// revealDelta returns how many pixels a box must scroll so that a field is
+// inside the box with a gap of margin pixels. All arguments are viewport
+// coordinates. A positive result scrolls down, a negative result scrolls
+// up, and 0 means the field is already inside. If the field is taller than
+// the box, the result aligns the top of the field, not the bottom.
+export function revealDelta(
+  fieldTop: number,
+  fieldBottom: number,
+  boxTop: number,
+  boxBottom: number,
+  margin = REVEAL_MARGIN,
+): number {
+  if (fieldBottom > boxBottom - margin) {
+    return Math.min(fieldBottom - boxBottom + margin, fieldTop - boxTop - margin);
+  }
+  if (fieldTop < boxTop + margin) return fieldTop - boxTop - margin;
+  return 0;
+}
+
+// revealFocusedAuthField scrolls the closest AUTH_SCROLLER box so that the
+// focused input, textarea, or select is visible. It does nothing if the
+// focus is elsewhere or outside such a box.
+function revealFocusedAuthField(): void {
+  const field = document.activeElement;
+  if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement)) {
+    return;
+  }
+  const box = field.closest<HTMLElement>(AUTH_SCROLLER);
+  if (!box) return;
+  const f = field.getBoundingClientRect();
+  const b = box.getBoundingClientRect();
+  const delta = revealDelta(f.top, f.bottom, b.top, b.bottom);
+  if (delta !== 0) box.scrollTop += delta;
+}
+
 // useKeyboardSafeShell writes SHELL_HEIGHT_VAR while active and a
 // visualViewport exists, and removes it otherwise, on unmount, and while
 // inactive -- so the desktop layout, which never calls this with
@@ -82,6 +129,9 @@ export function useKeyboardSafeShell(active: boolean): void {
       // strict, and this is the write path it still allows.
       root.style.setProperty(SHELL_HEIGHT_VAR, `${shellHeight(vv.height, vv.scale, window.innerHeight)}px`);
       if (vv.scale <= ZOOMED_SCALE && window.scrollY !== 0) window.scrollTo(0, 0);
+      // 135-10: the reset above also undoes the scroll that WebKit does to
+      // reveal a field, so this scroll puts the field back in view.
+      revealFocusedAuthField();
     };
     const schedule = () => {
       if (frame === 0) frame = window.requestAnimationFrame(sync);
@@ -93,12 +143,16 @@ export function useKeyboardSafeShell(active: boolean): void {
     // keyboard closes, so the shell stays short. A focusout event and an
     // orientationchange event also start a new measurement.
     window.addEventListener("focusout", schedule);
+    // 135-10: a focusin event measures again, so a tap on the next field
+    // while the keyboard is open also reveals that field.
+    window.addEventListener("focusin", schedule);
     window.addEventListener("orientationchange", schedule);
     return () => {
       if (frame !== 0) window.cancelAnimationFrame(frame);
       vv.removeEventListener("resize", schedule);
       vv.removeEventListener("scroll", schedule);
       window.removeEventListener("focusout", schedule);
+      window.removeEventListener("focusin", schedule);
       window.removeEventListener("orientationchange", schedule);
       root.style.removeProperty(SHELL_HEIGHT_VAR);
     };
