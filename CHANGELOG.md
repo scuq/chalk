@@ -10,6 +10,18 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## v0.12.6 — 16 November 2026 — The iOS app badge, and notifications in the background
+
+The changes below are only in the chalk iOS app. They reach the app with a server update. You need no app update.
+
+### Changed
+- If the server has no server identity key, the push settings in the iOS app now say that push needs the sealed connection. Before, they said "not available".
+
+### Fixed
+- In the iOS app, the badge on the app icon now follows the number of unread messages. Before, a notification set the badge and it never cleared. Now the badge clears when you read the messages.
+- In the iOS app, notifications now arrive while the app is in the background. Before, they arrived only if you had closed the app. The app shows you as away when it goes to the background, if your presence is automatic. A presence that you set yourself wins. While you are online on another device, such as a desktop, the phone still gets no notification.
+- In the iOS app, a notification showed only "New notification" and not the sender and channel after the push keys of the app changed. The app now sends its current keys to the server each time it connects.
+
 ## v0.12.5 — 16 November 2026 — Groundwork for the iOS app, and the phone keyboard
 
 ### Added
