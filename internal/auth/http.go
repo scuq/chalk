@@ -185,6 +185,12 @@ type HTTPDeps struct {
 	// key will travel over the sealed WebSocket (65-4).
 	PushEnabled bool
 
+	// 139-1: ReviewMode is true only on a review instance for app review.
+	// cmd/chalkd sets it at startup from [ResolveReviewMode]. When true,
+	// password login gives a session without the TOTP step, and
+	// /api/auth/config reports review_mode=true. Nothing else changes.
+	ReviewMode bool
+
 	// OnGuestJoined is called after a FIRST redemption materializes a guest,
 	// so the server can push member_added to the room's members (their
 	// clients otherwise show the guest's messages under a UUID stub until
@@ -238,7 +244,7 @@ func (d *HTTPDeps) MountRegistration(mux *http.ServeMux) error {
 	mux.HandleFunc("POST /api/auth/recovery/regenerate", d.handleRecoveryRegenerate)
 	// 31-2: password login (first factor) + prelogin KDF-params fetch.
 	// TOTP (31-3) is mandatory; login/password issues only a totp_pending
-	// token, never a session.
+	// token, never a session. The exception is review mode (139-1).
 	if d.PendingTOTP == nil {
 		d.PendingTOTP = NewPendingTOTPCache(0)
 	}
@@ -373,6 +379,9 @@ type configResponse struct {
 	// 65-3: true if the server sends Web Push. The SPA shows the push
 	// settings only if this field is true.
 	PushEnabled bool `json:"push_enabled"`
+	// 139-1: true on a review instance for app review. The SPA shows a
+	// demo-server strip if this field is true.
+	ReviewMode bool `json:"review_mode"`
 }
 
 // ---- handlers ----------------------------------------------------------
@@ -403,6 +412,7 @@ func (d *HTTPDeps) handleConfig(w http.ResponseWriter, r *http.Request) {
 		EphemeralEnabled:    d.EphemeralEnabled,
 		SeasonalDecorations: settings.SeasonalDecorations,
 		PushEnabled:         d.PushEnabled,
+		ReviewMode:          d.ReviewMode,
 	})
 }
 

@@ -3,6 +3,8 @@
 // The auth-v2 login. Two steps, mirroring the server contract:
 //   1. credentials  username + password -> prelogin (KDF params) ->
 //                   Argon2id (WASM, ~1s) -> login/password -> totp_pending
+//                   (on a review instance, 139-1: the session, and then
+//                   onLoggedIn runs and step 2 does not)
 //   2. totp         6-digit code -> login/totp -> SESSION + onLoggedIn
 //
 // The derived KEK is stashed (kek-holder) so the post-login identity gate
@@ -65,7 +67,12 @@ export function PasswordLoginScreen({ onLoggedIn, onGoRegister, onGoRecovery, sh
       const res = await loginPassword(uname, toB64(authProof));
       // Stash the KEK for the post-login identity unlock. In-memory only.
       setKEK(kek);
-      setTotpPending(res.totp_pending);
+      if (res.kind === "session") {
+        // 139-1: a review instance gives the session without the TOTP step.
+        onLoggedIn(res.result);
+        return;
+      }
+      setTotpPending(res.totpPending);
       setMode("totp");
     } catch (e) {
       if (e instanceof SignupApiError) {

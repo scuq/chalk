@@ -23,8 +23,38 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/scuq/chalk/internal/store"
 )
+
+// finishLogin mints the session for userID, sets the cookie, and writes the
+// [authFinishResponse]. The TOTP step of login calls it, and in review mode
+// (139-1) the password step calls it too. logPrefix names the caller in the
+// log lines.
+func (d *HTTPDeps) finishLogin(w http.ResponseWriter, r *http.Request, logPrefix string, userID uuid.UUID) {
+	sess, err := MintSession(r.Context(), d.Store, w,
+		userID, UserAgentFromRequest(r), IPFromRequest(r))
+	if err != nil {
+		d.Logger.Printf("%s: mint session: %v", logPrefix, err)
+		writeError(w, http.StatusInternalServerError, "session_mint_failed",
+			"could not create session")
+		return
+	}
+	username, displayName, role := "", "", "user"
+	if user, uerr := d.Store.GetUserByID(r.Context(), userID); uerr == nil {
+		username, displayName, role = user.Username, user.DisplayName, user.Role
+	} else {
+		d.Logger.Printf("%s: GetUserByID for response: %v", logPrefix, uerr)
+	}
+	writeJSON(w, http.StatusOK, authFinishResponse{
+		UserID:           userID.String(),
+		Username:         username,
+		DisplayName:      displayName,
+		Role:             role,
+		SessionExpiresAt: sess.ExpiresAt,
+	})
+}
 
 type loginTOTPRequest struct {
 	TOTPPending string `json:"totp_pending"`
@@ -128,28 +158,7 @@ func (d *HTTPDeps) handleLoginTOTP(w http.ResponseWriter, r *http.Request) {
 	case store.TOTPSuccess:
 		_, _ = d.PendingTOTP.Take(token)
 		d.secLog("login_ok user=%s ip=%s method=%s", pend.UserID, ip, pend.Method)
-
-		sess, err := MintSession(r.Context(), d.Store, w,
-			pend.UserID, UserAgentFromRequest(r), IPFromRequest(r))
-		if err != nil {
-			d.Logger.Printf("login/totp: mint session: %v", err)
-			writeError(w, http.StatusInternalServerError, "session_mint_failed",
-				"could not create session")
-			return
-		}
-		username, displayName, role := "", "", "user"
-		if user, uerr := d.Store.GetUserByID(r.Context(), pend.UserID); uerr == nil {
-			username, displayName, role = user.Username, user.DisplayName, user.Role
-		} else {
-			d.Logger.Printf("login/totp: GetUserByID for response: %v", uerr)
-		}
-		writeJSON(w, http.StatusOK, authFinishResponse{
-			UserID:           pend.UserID.String(),
-			Username:         username,
-			DisplayName:      displayName,
-			Role:             role,
-			SessionExpiresAt: sess.ExpiresAt,
-		})
+		d.finishLogin(w, r, "login/totp", pend.UserID)
 		return
 	default:
 		writeError(w, http.StatusInternalServerError, "verify_failed", "internal error")

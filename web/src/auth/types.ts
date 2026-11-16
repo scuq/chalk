@@ -94,6 +94,9 @@ export interface AuthConfig {
   seasonal_decorations?: boolean;
   // 65-8: whether the server sends web push. Absent from older servers -> off.
   push_enabled?: boolean;
+  // 139-1: true on a review instance for app review. Absent from older
+  // servers -> false.
+  review_mode?: boolean;
 }
 
 // RegistrationForm is the SPA-side draft state of the registration

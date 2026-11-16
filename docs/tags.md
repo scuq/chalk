@@ -88,6 +88,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #selfupdate     105       desktop/src/selfupdate/ tools/make-release-key.sh .github/workflows/release.yml docs/phases/PHASE-105-SELFUPDATE.md
 #ios            136       ios/ internal/apns/ internal/server/push_ws.go internal/server/push_dispatch.go internal/server/reminder_push.go internal/server/push_apns_test.go internal/store/push.go internal/proto/push.go migrations/0066_push_subscription_kind.sql cmd/chalkd/main.go internal/webpush/send.go internal/config/push.go internal/chalkctl/apns.go internal/chalkctl/render.go internal/chalkctl/restore.go internal/chalkctl/init.go internal/chalkctl/templates/chalk.env.tmpl cmd/chalkctl/main.go web/icons/gen-png.mjs web/src/ios-shell.ts web/src/notify/ios-push.ts web/src/notify/ios-push.test.ts web/src/notify/push.ts web/src/components/PushSettings.tsx web/src/components/App.tsx web/src/presence/idle.ts web/src/proto.ts ios/chalk/PhoneCallTracker.swift ios/PushShared/ ios/chalkPush/ .github/workflows/ci.yml docs/phases/PHASE-136-IOS.md
 #macos          138       ios/chalkMac/ ios/Shared/ docs/phases/PHASE-138-MACOS.md
+#review         139       migrations/0067_review_instance.sql internal/store/review_instance.go internal/auth/review.go internal/auth/review_test.go internal/auth/http.go internal/auth/login_password_http.go internal/auth/login_totp_http.go internal/auth/stepup_test.go cmd/chalkd/main.go web/src/auth/login-v2-api.ts web/src/auth/login-v2-api.test.ts web/src/auth/PasswordLoginScreen.tsx web/src/auth/types.ts web/src/components/DemoStrip.tsx web/src/components/App.tsx web/src/theme.css docs/phases/PHASE-139-REVIEW.md
 
 ## Phase docs
 
@@ -102,7 +103,7 @@ Phase numbers that appear in the source but are not claimed above. Left here
 rather than guessed at, so the legend stays trustworthy; move one into a tag
 line when its topic is clear.
 
-    (none — 25 through 137 are all claimed)
+    (none — 25 through 139 are all claimed)
 
 Phases below 25 predate the tagging convention and carry no `// NN-n:` comments
 to find. They are recorded in `docs/phases/PHASE-00-29-FOUNDATION.md` instead —

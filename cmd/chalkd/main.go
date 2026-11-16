@@ -147,6 +147,15 @@ func run(args []string) error {
 		return nil
 	}
 
+	// 139-1: review mode needs CHALK_REVIEW_MODE and the mark of a review
+	// database. With the env var and no mark, chalkd does not start. The
+	// check comes after --migrate-only, because `chalkctl review init`
+	// migrates the new database before it writes the mark.
+	reviewMode, err := resolveReviewMode(connectCtx, st)
+	if err != nil {
+		return fmt.Errorf("review mode: %w", err)
+	}
+
 	// Phase 06: presence + friends. Both stores share the same pgxpool
 	// as the message store; they're stateless wrappers. The loop config
 	// reads env-var overrides (test-only knobs) on top of the production
@@ -304,6 +313,12 @@ func run(args []string) error {
 
 		// 65-3: true if Web Push is on.
 		PushEnabled: pushSender != nil,
+
+		// 139-1: review instance for app review.
+		ReviewMode: reviewMode,
+	}
+	if reviewMode {
+		log.Print(auth.ReviewModeBanner())
 	}
 	log.Printf("auth: rp_id=%q rp_name=%q rp_origins=%v open_registration=%v dev=%v",
 		authCfg.RPID, authCfg.RPDisplayName, authCfg.RPOrigins,
@@ -678,4 +693,19 @@ func maybeBootstrapAdmin(ctx context.Context, st *store.Store, cfg config.Config
 	log.Printf("admin bootstrap: seeded admin user %q (id=%s); claim it at "+
 		"/?admin_token=<CHALK_ADMIN_BOOTSTRAP_TOKEN>", admin.Username, admin.ID)
 	return nil
+}
+
+// resolveReviewMode reads the two gates of review mode (139-1) and returns
+// the result of [auth.ResolveReviewMode]. It reads the database only if
+// CHALK_REVIEW_MODE asks for review mode.
+func resolveReviewMode(ctx context.Context, st *store.Store) (bool, error) {
+	requested := auth.ReviewModeRequested()
+	if !requested {
+		return false, nil
+	}
+	marked, err := st.IsReviewInstance(ctx)
+	if err != nil {
+		return false, fmt.Errorf("read review_instance: %w", err)
+	}
+	return auth.ResolveReviewMode(requested, marked)
 }

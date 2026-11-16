@@ -2,8 +2,10 @@
 //
 // Wire bindings for the two-step password login plus the seed-wrap fetch:
 //   POST /api/auth/login/prelogin   -> account KDF params + salt
-//   POST /api/auth/login/password   -> totp_pending (no session)
-//   POST /api/auth/login/totp       -> session (the only session-minting step)
+//   POST /api/auth/login/password   -> totp_pending (no session), or on a
+//                                      review instance (139-1) the session
+//   POST /api/auth/login/totp       -> session (the session step, unless the
+//                                      server is a review instance)
 //   GET  /api/auth/seed-wraps       -> password-wrapped entropy (new-device unlock)
 
 import type { LoginResult } from "./types";
@@ -27,9 +29,26 @@ export async function prelogin(username: string): Promise<PreloginResult> {
   return parseAuthResponse<PreloginResult>(resp);
 }
 
-export interface LoginPasswordResult {
-  totp_pending: string;
-  expires_at: string;
+/** The result of the password step of login. */
+export type LoginPasswordResult =
+  /** The TOTP step comes next, with this token. */
+  | { kind: "totp"; totpPending: string }
+  /** 139-1: a review instance gave the session without the TOTP step. */
+  | { kind: "session"; result: LoginResult };
+
+/**
+ * Returns the result of the password step from the body of a 200 answer.
+ * A body with a `totp_pending` token is the TOTP case. A body with a
+ * `user_id` is the session case. Any other body throws.
+ */
+export function passwordLoginOutcome(body: Record<string, unknown>): LoginPasswordResult {
+  if (typeof body.totp_pending === "string" && body.totp_pending !== "") {
+    return { kind: "totp", totpPending: body.totp_pending };
+  }
+  if (typeof body.user_id === "string" && body.user_id !== "") {
+    return { kind: "session", result: loginResultFromWire(body as unknown as loginTOTPWire) };
+  }
+  throw new Error("login/password: the answer has neither totp_pending nor user_id");
 }
 
 export async function loginPassword(
@@ -42,7 +61,7 @@ export async function loginPassword(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, auth_proof_b64: authProofB64 }),
   });
-  return parseAuthResponse<LoginPasswordResult>(resp);
+  return passwordLoginOutcome(await parseAuthResponse<Record<string, unknown>>(resp));
 }
 
 interface loginTOTPWire {
@@ -60,7 +79,11 @@ export async function loginTOTP(totpPending: string, code: string): Promise<Logi
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ totp_pending: totpPending, code }),
   });
-  const w = await parseAuthResponse<loginTOTPWire>(resp);
+  return loginResultFromWire(await parseAuthResponse<loginTOTPWire>(resp));
+}
+
+// loginResultFromWire maps the session answer of the server to a LoginResult.
+function loginResultFromWire(w: loginTOTPWire): LoginResult {
   return {
     userID: w.user_id,
     username: w.username,

@@ -7104,6 +7104,25 @@ body.chalk-resizing-y .chalk-composer-resizer {
 }
 .chalk-join-notice-dismiss:hover { color: var(--chalk-fg); }
 
+/* 139-1: the label of a review instance (DemoStrip.tsx). Fixed at the top
+   centre, above the safe area of a phone. It does not take clicks, so it
+   never covers a control. */
+.chalk-demo-strip {
+  position: fixed;
+  top: env(safe-area-inset-top, 0px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1100;
+  pointer-events: none;
+  padding: 0 var(--chalk-s2);
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-warn);
+  border: 1px solid var(--chalk-warn);
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  background: var(--chalk-bg);
+}
+
 /* -- 82-8: key provenance line ------------------------------------------ */
 .chalk-members-provenance {
   font-size: 0.75rem;

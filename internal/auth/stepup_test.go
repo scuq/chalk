@@ -46,6 +46,13 @@ var stepUpProof = bytes.Repeat([]byte{3}, 32)
 
 func setupStepUpEnv(t *testing.T) *stepUpEnv {
 	t.Helper()
+	return setupStepUpEnvWith(t, nil)
+}
+
+// setupStepUpEnvWith is setupStepUpEnv, and calls tune on the deps before the
+// server starts, if tune is not nil.
+func setupStepUpEnvWith(t *testing.T, tune func(*auth.HTTPDeps)) *stepUpEnv {
+	t.Helper()
 	dbURL := os.Getenv("CHALK_TEST_DATABASE_URL")
 	if dbURL == "" {
 		t.Skip("CHALK_TEST_DATABASE_URL not set; skipping integration test")
@@ -88,6 +95,9 @@ func setupStepUpEnv(t *testing.T) *stepUpEnv {
 		Service: svc,
 		Cache:   auth.NewCeremonyCache(time.Minute),
 		Store:   st,
+	}
+	if tune != nil {
+		tune(deps)
 	}
 	mux := http.NewServeMux()
 	if err := deps.MountRegistration(mux); err != nil {

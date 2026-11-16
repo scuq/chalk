@@ -4,7 +4,8 @@
 // server issues a short-lived, single-use totp_pending token and issues NO
 // session. The client presents that token plus a TOTP code to
 // POST /api/auth/login/totp (slice 31-3), which is where the session is
-// finally minted. TOTP is mandatory, so no login path skips this bridge.
+// finally minted. TOTP is mandatory, so no login path skips this bridge,
+// except password login on a review instance (139-1, [HTTPDeps.ReviewMode]).
 //
 // The token bridges two requests seconds apart, so it lives in memory --
 // modelled on CeremonyCache (one-shot Take, TTL). It is deliberately not

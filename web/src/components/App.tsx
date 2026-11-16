@@ -466,6 +466,7 @@ import {
 import { lookupUser } from "../auth/users";
 import { refreshDirectory, resetDisplayNames, useDisplayNames } from "../auth/display-names";
 import { setAvatarFrame } from "../auth/avatar-frame-api"; // 115-6
+import { DemoStrip } from "./DemoStrip"; // 139-1
 
 function classifyDevice(): "phone" | "tablet" | "desktop" {
   const ua = navigator.userAgent;
@@ -5629,6 +5630,8 @@ export function App() {
 
   if (state.authStage !== "authed") {
     return (
+      <>
+      <DemoStrip reviewMode={state.authConfig?.review_mode ?? false} />
       <AuthGate
         authStage={state.authStage}
         authConfig={state.authConfig}
@@ -5641,6 +5644,7 @@ export function App() {
         adminClaimUsername={state.adminClaimUsername}
         dispatch={dispatch}
       />
+      </>
     );
   }
 
@@ -6537,6 +6541,8 @@ export function App() {
         key="voice-sinks"
         onJumpToChannel={(id) => dispatch({ kind: "set_active_channel", channelID: id })}
       />
+      {/* 139-1: position: fixed, so it takes no grid area. */}
+      <DemoStrip reviewMode={state.authConfig?.review_mode ?? false} />
       <header class="chalk-header">
         <div class="chalk-header-left">
           <div class="chalk-brand">

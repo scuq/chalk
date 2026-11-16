@@ -13,8 +13,11 @@
 //	  -> {totp_pending, expires_at}
 //	  Verifies authProof in constant time against user_auth.auth_proof_hash
 //	  and, on success, issues a short-lived single-use totp_pending token.
-//	  It mints NO session: TOTP is mandatory and the session is minted only
-//	  by POST /api/auth/login/totp (slice 31-3).
+//	  It mints NO session: TOTP is mandatory and POST /api/auth/login/totp
+//	  (slice 31-3) mints the session. One exception (139-1): on a review
+//	  instance ([HTTPDeps.ReviewMode]), for an account with a confirmed TOTP
+//	  secret, this endpoint mints the session and answers with the body of
+//	  /api/auth/login/totp.
 //
 // Note on FOR UPDATE: the locked spec calls for the verify to run under
 // s.withTx / FOR UPDATE. That row lock exists to serialise the MUTABLE TOTP
@@ -109,10 +112,12 @@ func (d *HTTPDeps) preloginParams(r *http.Request, username string) KDFParams {
 }
 
 // handleLoginPassword verifies the first factor and issues a totp_pending
-// token. Failures return a generic 401 invalid_credentials so the endpoint
-// does not reveal whether the username, the enrollment, or the proof was the
-// problem. Deleted/blocked accounts surface their specific status, matching
-// the passkey login path.
+// token. It gives no session, with one exception (139-1): if
+// [HTTPDeps.ReviewMode] is true and the account has a confirmed TOTP secret,
+// it mints the session and answers as the TOTP step does. Failures return a
+// generic 401 invalid_credentials so the endpoint does not reveal if the
+// username, the enrollment, or the proof was the problem. Deleted and blocked
+// accounts show their specific status, as the passkey login path does.
 func (d *HTTPDeps) handleLoginPassword(w http.ResponseWriter, r *http.Request) {
 	var req loginPasswordRequest
 	if err := decodeJSON(r, &req); err != nil {
@@ -137,7 +142,7 @@ func (d *HTTPDeps) handleLoginPassword(w http.ResponseWriter, r *http.Request) {
 	// branch was taken).
 	var storedHash []byte
 	var userID = uuid.Nil
-	var deleted, blocked bool
+	var deleted, blocked, totpConfirmed bool
 
 	user, err := d.Store.GetUserByUsername(r.Context(), username)
 	if err == nil {
@@ -146,6 +151,7 @@ func (d *HTTPDeps) handleLoginPassword(w http.ResponseWriter, r *http.Request) {
 		userID = user.ID
 		if ua, aerr := d.Store.GetUserAuth(r.Context(), user.ID); aerr == nil {
 			storedHash = ua.AuthProofHash
+			totpConfirmed = ua.TOTPConfirmed()
 		}
 	} else if !errors.Is(err, store.ErrNotFound) {
 		d.Logger.Printf("login/password: lookup username: %v", err)
@@ -186,6 +192,15 @@ func (d *HTTPDeps) handleLoginPassword(w http.ResponseWriter, r *http.Request) {
 			"login_failed username=%q ip=%s", username, ip)
 		writeError(w, http.StatusUnauthorized, "invalid_credentials",
 			"incorrect username or password")
+		return
+	}
+
+	// 139-1: on a review instance, an account with a confirmed TOTP secret
+	// gets its session here, without the TOTP step. An account without a
+	// confirmed secret takes the normal path, and the TOTP step refuses it.
+	if d.ReviewMode && totpConfirmed {
+		d.secLog("login_ok user=%s ip=%s method=password-review", userID, clientIPString(r))
+		d.finishLogin(w, r, "login/password", userID)
 		return
 	}
 

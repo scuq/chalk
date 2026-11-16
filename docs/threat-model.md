@@ -66,6 +66,15 @@ once and referenced below rather than hedged in every section.
   BIP-39 encryption phrase that never leaves the client.
 - **Account auth is password + mandatory TOTP** (auth v2, phase 31). Passkeys
   are an additional convenience factor, never a bypass of the second factor.
+  One exception exists (phase 139). On a review instance for app review,
+  password login skips the TOTP step. The production binary has this code, and
+  two gates guard it: the `CHALK_REVIEW_MODE` env var must be set, and the
+  table `review_instance` must have its row. The migration leaves the table
+  empty. No migration and no HTTP endpoint writes the row. The planned
+  `chalkctl review init` (slice 139-2) is the only writer. If the env var is
+  set and the row is missing, chalkd does not start. Step-up, the recovery reset,
+  and signup enrollment still need TOTP. See
+  [phases/PHASE-139-REVIEW.md](phases/PHASE-139-REVIEW.md).
 - **Voice and video** ship (phase 30) and are E2E encrypted by WebRTC's DTLS,
   with the peer fingerprints signed by each side's Ed25519 identity key and
   verified before media flows (`web/src/voice/signal-crypto.ts`).

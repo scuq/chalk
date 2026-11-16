@@ -9,6 +9,7 @@ Latest release: **v0.12.6** — keep this in step with the topmost `## vX.Y.Z`
 heading in `CHANGELOG.md`. The `/release` skill updates it as part of cutting a
 release. A stale pointer is worse than none, because it still reads as current.
 
+Phase 139 is in progress. Slice 139-1 is built, and slices 139-2 to 139-4 are open.
 Phase 137 is the newest work. It is built, with all twelve slices, and the device checks are open.
 Phase 135 is built. All ten slices are built. The device checks are open.
 Phase 133 is built, with the voice room, and seven points of it are open.
@@ -16,6 +17,25 @@ Phase 131 has two small open points.
 Phase 130 has two open points. The phase-doc index at the top of
 [phase-log.md](phase-log.md) is the complete list of what exists and which
 phases are *planned, not started*.
+
+## Phase 139 — review instance: IN PROGRESS, 139-1 built
+
+A second chalk instance that the Apple reviewer signs in to. Its password login
+has no TOTP step. Record in [phases/PHASE-139-REVIEW.md](phases/PHASE-139-REVIEW.md).
+
+- Slice 139-1 is built (2026-11-16, not committed): review mode in chalkd. It
+  needs two gates, the `CHALK_REVIEW_MODE` env var and the row of the table
+  `review_instance`. If the env var is set and the row is missing, chalkd does
+  not start.
+- Slice 139-2 is open: `chalkctl review` (init, up, down, status, and
+  registration), and the second site block in the Caddyfile.
+- Slice 139-3 is open: `review snapshot` and `review reset`.
+- Slice 139-4 is open: the paperwork, the changelog entry, and the text of the
+  review notes.
+- Nothing writes the `review_instance` row until slice 139-2. The instance
+  cannot start in review mode before that slice.
+- The operator does the manual steps in the phase doc after 139-3 ships. This
+  includes the DNS record and the demo accounts.
 
 ## Phase 137 — phone polish: built, the device checks are open
 
@@ -639,6 +659,12 @@ same space.
   (native push), 138-9 (Developer ID signature and notarization), and 138-10
   (self-update). Slice 138-11 removes the Electron build for macOS
   after a parity review. Until then, the Electron build stays.
+- **Self-service account deletion**, not planned yet. Apple guideline 5.1.1(v)
+  says that an app that lets a user create an account must also let the user
+  delete it in the app. chalk has none, so Apple can reject the iOS app for it.
+  The review instance of phase 139 does not change this. It needs its own phase.
+  Ask the operator before work starts. See
+  [phases/PHASE-139-REVIEW.md](phases/PHASE-139-REVIEW.md).
 - **The SFU seam** (voice design Slice I) for rooms too large for a mesh.
 - **Governance `set_config` proposals.**
 - **Database-credential hardening** (99, [phases/PHASE-99-DBCREDS.md](phases/PHASE-99-DBCREDS.md)):
