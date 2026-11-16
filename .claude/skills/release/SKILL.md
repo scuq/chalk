@@ -8,6 +8,8 @@ version number in the source: `Makefile` `VERSION` is stamped from the git tag
 through ldflags in `.github/workflows/release.yml`, which builds the multi-arch
 image and the `chalkctl` binaries on any `v*` tag. So the tag *is* the release,
 and everything below it exists to make the tag mean something.
+A release does not change the versions of the native apps. They carry a
+hand-set version in their project files (`docs/phases/PHASE-136-IOS.md`).
 
 **Never run git yourself.** Per the working agreements, propose the commands;
 scuq runs them. That applies to `git add`, `commit`, `tag` and both pushes.

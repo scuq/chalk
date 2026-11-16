@@ -1052,6 +1052,25 @@ These are the options:
 
 This decision blocks the external tester group. It does not block internal testing.
 
+#### Version of the app
+
+The owner decided on 16 November 2026 that a native app carries the chalk version in its own project file.
+This breaks the rule of one version number in the repository.
+The same rule applies to the native macOS app of phase 138 and to a possible Android app.
+
+- `MARKETING_VERSION` of the targets `chalk` and `chalkPush` is `0.12.5`. The app and the extension must have the same version, or Apple warns.
+- The target `chalkTests` stays at `1.0`, because it never ships.
+- The owner edits the version by hand to the current chalk release before each upload to Apple.
+- The app does not need a new version for each chalk release, because it only loads the web client from the server. A server update never needs a new app build.
+- The app version records the chalk release at which the shell was built.
+- `CURRENT_PROJECT_VERSION` is the build number. It starts at 1. Apple requires it to rise for each upload of the same version. It can restart at 1 for a new version.
+- A Release build shows `CFBundleShortVersionString` 0.12.5 and `CFBundleVersion` 1 for the app and for the extension.
+- The version must also rise from upload to upload. Nothing was uploaded before, so 0.12.5 is a valid start.
+
+Rejected: stamp the version at archive time from the git tag with a script.
+This keeps the rule of one version number.
+It loses the Archive button of Xcode for the local upload.
+
 #### 136-5b: the first upload from the Mac
 
 Needs the paid account. The steps of the owner:
@@ -1061,13 +1080,14 @@ Needs the paid account. The steps of the owner:
 3. Download the APNs key. Apple allows the download once, so keep the file safe.
 4. Run `chalkctl push apns set` with the key.
 5. Make the app record in App Store Connect. The name must be unique on the App Store.
-6. In Xcode, choose Archive, then Distribute, then App Store Connect.
-7. Test with TestFlight internal testers first.
+6. Set `MARKETING_VERSION` of the app and of the extension to the current chalk version. If the version is unchanged since the last upload, raise `CURRENT_PROJECT_VERSION`.
+7. In Xcode, choose Archive, then Distribute, then App Store Connect.
+8. Test with TestFlight internal testers first.
 
 #### 136-5c: the GitHub release job
 
 - A new `ios` job in `.github/workflows/release.yml` runs on a macOS runner for each `v*` tag.
-  1. It sets `MARKETING_VERSION` from the tag.
+  1. It sets the version. How it does this is open, because of the decision in "Version of the app". The job possibly reads the version from the project file or sets `MARKETING_VERSION` from the tag.
   2. It sets `CURRENT_PROJECT_VERSION` from the run number, because Apple rejects an upload whose build number does not increase.
   3. It runs `xcodebuild archive`.
   4. It runs `xcodebuild -exportArchive` with the upload to App Store Connect.

@@ -217,7 +217,7 @@ agent into the search agent.
 their caveats, next candidates, and deferred cleanup. Read it before proposing
 new work. Shipped history is `docs/phase-log.md` (engineering) and
 `CHANGELOG.md` (user-facing); the topmost `## vX.Y.Z` heading there is the only
-version number in the repo, everything else is stamped from the git tag.
+version number in the repo, everything else is stamped from the git tag, except the native app projects, which carry a hand-set version (`docs/phases/PHASE-136-IOS.md`).
 
 **Before making any claim about chalk's security properties**, read
 `docs/threat-model.md` and `docs/open-items.md`. The trust model was revised

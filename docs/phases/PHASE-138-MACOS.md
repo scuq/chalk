@@ -103,6 +103,7 @@ A document-start user script defines `window.chalkDesktop` and forwards `idle.ge
 - The app has the hardened runtime and no App Sandbox. An app in the sandbox cannot replace its own bundle.
 - The release job signs with a Developer ID certificate, notarizes with `notarytool`, and staples the ticket.
 - The archive is `chalk-desktop-<version>-macos-native.zip` and holds `chalk.app`. The name matches the `chalk-desktop-*` glob, so `SHA256SUMS.desktop` and its Ed25519 signature cover it with no change to the signing steps.
+- The version rule of `PHASE-136-IOS.md` ("Version of the app") applies when the target is created. The project file carries the chalk version, and the owner sets it by hand.
 - The updater is a Swift port of phase 105. It reads the same release, the same signed table, and the same pinned key as `desktop/src/selfupdate/key.ts`.
 - Before the swap, the updater also checks that the new bundle has a valid code signature from the same team. `PHASE-105-SELFUPDATE.md` names this requirement for a notarized app.
 - A test in `desktop/` reads both key constants and fails when they differ.
