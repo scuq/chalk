@@ -13,13 +13,29 @@
   "files": [
     { "kind": "folder", "path": "chalk", "target-membership": [ "chalk" ] },
     { "kind": "folder", "path": "Shared", "target-membership": [ "chalk" ] },
+    { "kind": "folder", "path": "PushShared", "target-membership": [ "chalk", "chalkPush" ] },
     { "kind": "folder", "path": "chalkTests", "target-membership": [ "chalkTests" ] },
     {
+      "kind": "folder",
+      "path": "chalkPush",
+      "target-membership": [
+        "chalkPush",
+      ],
+      "membership-exceptions": [
+        {
+          "target": "chalkPush",
+          "exclusions": [
+            "Info.plist",
+          ],
+        },
+      ],
+    }, {
       "kind": "group",
       "name": "Products",
       "children": [
         { "path": "<PRODUCTS>/chalk.app", "id": "0A38ED6930AAEE9A00E8A3B2", "type": "wrapper.application", "index": false },
         { "path": "<PRODUCTS>/chalkTests.xctest", "id": "0A8C123830AAFF55002CFB36", "type": "wrapper.cfbundle", "index": false },
+        { "path": "<PRODUCTS>/chalkPush.appex", "id": "0AB0ABBB30AB315700E2B6B6", "type": "wrapper.app-extension", "index": false, "target-membership": [ { "build-phase": "chalk/copy/Embed Foundation Extensions", "header-preservation": "remove-on-copy" } ] },
       ],
     },
   ],
@@ -29,10 +45,18 @@
       "id": "0A38ED6830AAEE9A00E8A3B2",
       "product": "Products/chalk.app",
       "product-type": "application",
+      "dependencies": [
+        "chalkPush",
+      ],
       "build-phases": [
         "compile-sources",
         "frameworks",
         "resources",
+        {
+          "kind": "copy",
+          "name": "Embed Foundation Extensions",
+          "bundle-base-path": "plugins-directory",
+        },
       ],
       "build-settings": {
         "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
@@ -95,6 +119,42 @@
         "SWIFT_VERSION": "5.0",
         "TARGETED_DEVICE_FAMILY": "1,2",
         "TEST_HOST": "$(BUILT_PRODUCTS_DIR)/chalk.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/chalk",
+      },
+    }, {
+      "name": "chalkPush",
+      "id": "0AB0ABBA30AB315700E2B6B6",
+      "product": "Products/chalkPush.appex",
+      "product-type": "app-extension",
+      "build-phases": [
+        "compile-sources",
+        "frameworks",
+        "resources",
+      ],
+      "build-settings": {
+        "CODE_SIGN_STYLE": "Automatic",
+        "CURRENT_PROJECT_VERSION": "1",
+        "DEVELOPMENT_TEAM": "6X9SR4MVJ7",
+        "GENERATE_INFOPLIST_FILE": "YES",
+        "CODE_SIGN_ENTITLEMENTS": "chalkPush/chalkPush.entitlements",
+        "INFOPLIST_FILE": "chalkPush/Info.plist",
+        "INFOPLIST_KEY_CFBundleDisplayName": "chalkPush",
+        "INFOPLIST_KEY_NSHumanReadableCopyright": "",
+        "IPHONEOS_DEPLOYMENT_TARGET": "17.0",
+        "LD_RUNPATH_SEARCH_PATHS": [
+          "$(inherited)",
+          "@executable_path/Frameworks",
+          "@executable_path/../../Frameworks",
+        ],
+        "MARKETING_VERSION": "1.0",
+        "PRODUCT_BUNDLE_IDENTIFIER": "at.73c.chalk.chalkPush",
+        "PRODUCT_NAME": "$(TARGET_NAME)",
+        "SKIP_INSTALL": "YES",
+        "STRING_CATALOG_GENERATE_SYMBOLS": "YES",
+        "SWIFT_APPROACHABLE_CONCURRENCY": "YES",
+        "SWIFT_EMIT_LOC_STRINGS": "YES",
+        "SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY": "YES",
+        "SWIFT_VERSION": "5.0",
+        "TARGETED_DEVICE_FAMILY": "1,2",
       },
     },
   ],

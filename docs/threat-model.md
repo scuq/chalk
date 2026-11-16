@@ -429,7 +429,10 @@ Since 136-4d part 2, the page in the server origin can ask the app for a push re
 The registration is the device token and a public key.
 The private key stays in the Keychain of the device.
 The token and the public key travel only on the sealed WebSocket, as before.
-The notification extension is not built, so the app cannot yet decrypt a push.
+Since 136-4d part 3, a notification extension in the app decrypts each push on the device.
+The extension reads the key pair from a Keychain item that is shared with the app through an access group.
+The item is readable after the first unlock and never leaves the device (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`).
+If the extension cannot decrypt, or if its time runs out, the notification shows the constant fallback text "chalk" and "New notification".
 Passkeys possibly do not work in the web view, because associated domains are compiled into the app.
 Password with TOTP is not affected.
 This is unmeasured.
@@ -584,8 +587,7 @@ A network attacker therefore cannot swap the device token or the key of the app.
 
 Slice 136-4b built the server side.
 Slice 136-4d part 2 built the registration from the app.
-The extension that decrypts is not built, because it needs the paid account.
-The text below states what the design does once all parts exist.
+Slice 136-4d part 3 built the extension that decrypts on the device.
 
 ### What Apple learns from each push
 
@@ -646,7 +648,8 @@ One residual risk exists.
 If the notification extension of the app does not run or times out, iOS displays the alert text of the push as sent.
 A forged push with a chosen alert text would then display that text.
 The server always sends the constant fallback text.
-The extension of 136-4d must always replace the text.
+The extension of 136-4d replaces the text with the decrypted text, or with a constant fallback text if it fails.
+It cannot replace the text if iOS does not run it.
 
 The key belongs to the Apple developer team, not to one chalk server.
 Only a server that holds the key of the team can push to the app.

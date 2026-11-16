@@ -36,7 +36,8 @@ import {
   onPushSubscribed,
   reconcilePush,
 } from "../notify/push";
-import { installIOSOpenListener, reconcileNativePush } from "../notify/ios-push";
+import { installIOSOpenListener, reconcileNativePush, setNativeBadge } from "../notify/ios-push";
+import { iosShellPresent } from "../ios-shell";
 import { wakeKey, wakeSet } from "../chat/reminder-wake"; // 87-7
 import { parseOpenURL } from "../sw-logic";
 import { titleController } from "../notify/title";
@@ -345,7 +346,7 @@ import { installWakeLock } from "../voice/wake-lock"; // 135-7
 import { installMediaSession } from "../voice/media-session"; // 135-7
 import { toggleCamOrEnable } from "./VoiceControls";
 import { installParkingHotkey } from "../parking-hotkey";
-import { installIdleWatch, type IdleWatch } from "../presence/idle";
+import { installIdleWatch, intendedPresence, type IdleWatch } from "../presence/idle";
 import { useIdlePrefs } from "../presence/idle-prefs";
 import {
   startSystemIdle,
@@ -4457,7 +4458,11 @@ export function App() {
   );
 
   // 50-7: the unread badge -- "(n) chalk" in the tab title, and the app
-  // icon badge where installed as a PWA. Derived only from read-cursor
+  // icon badge where installed as a PWA. In the iOS app, setNativeBadge sends
+  // the same count to the app (136-4d), so the icon badge matches the page and
+  // clears when things are read. The effect also runs when the page becomes
+  // visible (tabVisible), to correct a badge that a push set while the page
+  // was in the background. Derived only from read-cursor
   // state and the count of fired reminders (badge.ts), so it clears on its
   // own when things are read on any device or a reminder is snoozed or done.
   // It deliberately ignores DND: silencing interruptions is not the same as
@@ -4493,6 +4498,7 @@ export function App() {
           firedReminderCount: remindersFired,
         });
     titleController().setCount(n);
+    setNativeBadge(n);
     const nav = navigator as Navigator & {
       setAppBadge?: (n?: number) => Promise<void>;
       clearAppBadge?: () => Promise<void>;
@@ -4512,6 +4518,7 @@ export function App() {
     state.pendingIncoming,
     remindersFired,
     screened,
+    tabVisible,
   ]);
 
   // 40-4: your own connection coming and going. Both off by default.
@@ -4721,6 +4728,9 @@ export function App() {
   //   - mode=online → online
   //   - mode=away   → away
   //   - mode=auto   → userIdle ? away : online
+  //   - mode=auto in the iOS app, page in the background → away
+  //     (136-4d: chalkd sends no push to a user with a device online)
+  // A manual online or away mode wins over the background rule.
   useEffect(() => {
     if (state.wsState !== "open" || !state.user) {
       if (state.myEffectivePresence !== "offline") {
@@ -4728,10 +4738,7 @@ export function App() {
       }
       return;
     }
-    let intended: "online" | "away";
-    if (state.myPresenceMode === "online") intended = "online";
-    else if (state.myPresenceMode === "away") intended = "away";
-    else intended = userIdle ? "away" : "online";
+    const intended = intendedPresence(state.myPresenceMode, userIdle, !tabVisible && iosShellPresent());
 
     if (intended === state.myEffectivePresence) return;
 
@@ -4745,6 +4752,7 @@ export function App() {
     state.myPresenceMode,
     state.myEffectivePresence,
     userIdle,
+    tabVisible,
   ]);
 
   // 43-6: turning the feature off clears whoever is on screen right now, so

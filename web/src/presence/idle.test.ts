@@ -13,6 +13,7 @@ import {
   IDLE_AFTER_FOCUSED_MS,
   IDLE_AFTER_UNFOCUSED_MS,
   decideIdle,
+  intendedPresence,
   type IdleInput,
 } from "./idle.ts";
 
@@ -172,4 +173,12 @@ test("thresholds are read from the input, not from the module", () => {
       .idle,
     false,
   );
+});
+
+test("in the iOS app, a page in the background is away, so the phone gets pushes", () => {
+  assert.equal(intendedPresence("auto", false, false), "online");
+  assert.equal(intendedPresence("auto", true, false), "away");
+  assert.equal(intendedPresence("auto", false, true), "away");
+  assert.equal(intendedPresence("online", true, true), "online");
+  assert.equal(intendedPresence("away", false, false), "away");
 });

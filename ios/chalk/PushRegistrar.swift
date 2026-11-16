@@ -4,7 +4,7 @@ import WebKit
 
 /// Registers the device for remote notifications and answers the page.
 ///
-/// Without the Push capability, which needs the paid account, iOS refuses the registration and the reply is "unavailable".
+/// Without the Push capability, iOS refuses the registration and the reply is "unavailable".
 @MainActor
 final class PushRegistrar {
     static let shared = PushRegistrar()
@@ -28,7 +28,7 @@ final class PushRegistrar {
         guard status == .authorized || status == .provisional || status == .ephemeral else {
             return PushReply.failure("denied")
         }
-        guard let token = await deviceToken(), let keys = try? PushKeys.loadOrCreate(KeychainStore.push) else {
+        guard let token = await deviceToken(), let keys = try? PushKeys.loadOrCreate(KeychainStore.push, legacy: KeychainStore.legacyPush) else {
             return PushReply.failure("unavailable")
         }
         return PushReply.success(token: token, keys: keys,
@@ -99,7 +99,12 @@ final class PushOpenRouter {
 /// The `chalkPush` message handler of the page.
 ///
 /// It answers only the main frame of the server origin and refuses every other frame.
-/// The only request is `{op: "register", prompt}`.
+/// It knows two requests:
+///
+/// - `{op: "register", prompt}` returns the registration (see `PushRegistrar`).
+/// - `{op: "badge", count}` sets the badge on the app icon and returns true.
+///
+/// It refuses any other request with the error "unknown request".
 final class PushBridge: NSObject, WKScriptMessageHandlerWithReply {
     static let name = "chalkPush"
     let serverOrigin: String?
@@ -116,10 +121,31 @@ final class PushBridge: NSObject, WKScriptMessageHandlerWithReply {
         guard message.frameInfo.isMainFrame,
               originString(message.frameInfo.securityOrigin) == serverOrigin
         else { return (nil, "refused") }
-        guard let body = message.body as? [String: Any], body["op"] as? String == "register" else {
+        guard let body = message.body as? [String: Any] else { return (nil, "unknown request") }
+        switch body["op"] as? String {
+        case "register":
+            return (await PushRegistrar.shared.register(prompt: body["prompt"] as? Bool ?? false), nil)
+        case "badge":
+            // 136-4d: nothing else in the app clears the badge that a push sets, so the page sends its own count.
+            guard let count = Self.badgeCount(body) else { return (nil, "bad count") }
+            try? await UNUserNotificationCenter.current().setBadgeCount(count)
+            return (true, nil)
+        default:
             return (nil, "unknown request")
         }
-        return (await PushRegistrar.shared.register(prompt: body["prompt"] as? Bool ?? false), nil)
+    }
+
+    /// The largest badge count that the app sets.
+    ///
+    /// `web/src/notify/ios-push.ts` has the same limit in `MAX_NATIVE_BADGE`.
+    static let maxBadge = 9999
+
+    /// Returns the badge count of a `badge` request, or nil.
+    ///
+    /// The count must be an integer of 0 or more. A larger count becomes `maxBadge`.
+    static func badgeCount(_ body: [String: Any]) -> Int? {
+        guard let n = body["count"] as? Int, n >= 0 else { return nil }
+        return min(n, maxBadge)
     }
 }
 

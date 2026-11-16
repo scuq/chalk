@@ -587,7 +587,7 @@ same space.
   fan-out to both senders (reminders included), and the sender that chalkd
   builds. Slice 136-4c is built (2026-11-16): `chalkctl push apns set` and
   `clear`, the `apns` line of `push status`, and the key kept on `init --force`,
-  `update`, and restore. Nothing sends the frame yet, so no push goes to Apple. Slice 136-1 is done (2026-11-16): on an iPhone, a call
+  `update`, and restore. Slice 136-1 is done (2026-11-16): on an iPhone, a call
   continued through an app switch and a screen lock in the shell, so the gate
   passed. The call held for more than 5 min in each case, and
   the shell has no `PushManager` and no `Notification`. Slice 136-2 is built
@@ -606,16 +606,22 @@ same space.
   and a manual `ios` CI job for the Swift tests. Slice 136-4d part 1 is built
   (2026-11-16): the receiver side of the push crypto and the payload text, with
   tests. Part 2 is built (2026-11-16): the bridge between the app and the page, the
-  device keys, the tap path, and the push settings in the app, with tests. Open: the steps that need the paid Apple Developer account, which the owner
-  will buy and which is not active yet (136-5b the first upload, the rest of 136-4d
-  (the Push capability, the notification extension, the app group, and the device test),
-  and 136-5c the GitHub release job), the Beta App Review sign-in decision (the reviewer needs a TOTP
+  device keys, the tap path, and the push settings in the app, with tests. Part 3 is
+  built and checked on a real iPhone with the APNs sandbox (2026-11-16): the notification
+  extension decrypts a push and shows the real text, the badge follows the unread count of the
+  page, and the page claims "away" in the background so that chalkd sends a push, and a tap on a notification
+  opens the chat. Open in 136-4d:
+  a push through the production APNs key, and a follow-up that compares the stored key with the key of the device (now the page
+  uploads the registration again after each welcome). The rule that chalkd sends no push to a user
+  with a device online stays per user, so an online desktop suppresses the push to the phone.
+  While Xcode is attached, a swipe does not close the connection of the app, so the server keeps the
+  user online. Open for the account: 136-5b the first upload, 136-5c the GitHub release job, the Beta App Review sign-in decision (the reviewer needs a TOTP
   code), and the device checks. The export compliance decision is made (2026-11-16, standard
   encryption, `ITSAppUsesNonExemptEncryption` set to `true`). Open owner steps: answer the
   App Store Connect follow-up questions on the first upload in line with it, check the
   annual self-classification report for mass-market encryption (what applies and when it is
   due), and check the question about distribution in France when Apple asks. Installs that last
-  longer than 7 days need it too. Until the extension exists, a native push shows only the constant alert text of chalkd. In the Home
+  longer than 7 days need it too. In the Home
   Screen web app the call still pauses in the background, and the call view
   says so. In the app the call continues, and the view does not say so.
 - **A native macOS app** (138, [phases/PHASE-138-MACOS.md](phases/PHASE-138-MACOS.md)):

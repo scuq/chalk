@@ -153,4 +153,5 @@ test("inside the iOS app, the toggle shows once the server offers native push", 
   assert.equal(pushAvailability(env({ ...app, nativePush: true, sealed: false })), "unsealed");
   assert.equal(pushAvailability(env({ ...app, nativePush: true, serverEnabled: false })), "server-off");
   assert.equal(pushAvailability(env({ ...app, nativePush: false })), "ios-app");
+  assert.equal(pushAvailability(env({ ...app, nativePush: false, sealed: false })), "unsealed");
 });

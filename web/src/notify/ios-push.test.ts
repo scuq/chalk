@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import type { PushStatePayload } from "../proto";
 import {
   apnsPayload,
+  nativeBadgeMessage,
   nativePushBridge,
   openTargetFromIOS,
   parseNativeReply,
@@ -58,7 +59,7 @@ const state = (o: Partial<PushStatePayload> = {}): PushStatePayload => ({
 const ok = parseNativeReply(good) as NativeReply;
 
 test("reconcile keeps the server row in step with the app's token", () => {
-  assert.deepEqual(planNativeReconcile(state(), ok), { kind: "none" });
+  assert.deepEqual(planNativeReconcile(state(), ok), { kind: "upload", scope: "dms" });
   assert.deepEqual(planNativeReconcile(state({ endpoint: "ab12" }), ok), { kind: "upload", scope: "dms" });
   assert.deepEqual(planNativeReconcile(state({ key_current: false, scope: "all" }), ok), { kind: "upload", scope: "all" });
   assert.deepEqual(planNativeReconcile(state(), { ok: false, error: "denied" }), { kind: "drop-server" });
@@ -76,4 +77,13 @@ test("a tap from the app opens only ids that look like ids", () => {
   assert.equal(openTargetFromIOS({ channelID: "javascript:x" }), null);
   assert.equal(openTargetFromIOS({ threadID: ID }), null);
   assert.equal(openTargetFromIOS(null), null);
+});
+
+test("the badge message to the app carries a whole count from 0 to 9999", () => {
+  assert.deepEqual(nativeBadgeMessage(3), { op: "badge", count: 3 });
+  assert.deepEqual(nativeBadgeMessage(0), { op: "badge", count: 0 });
+  assert.deepEqual(nativeBadgeMessage(-2), { op: "badge", count: 0 });
+  assert.deepEqual(nativeBadgeMessage(2.7), { op: "badge", count: 2 });
+  assert.deepEqual(nativeBadgeMessage(1e9), { op: "badge", count: 9999 });
+  assert.deepEqual(nativeBadgeMessage(Number.NaN), { op: "badge", count: 0 });
 });

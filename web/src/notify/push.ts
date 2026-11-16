@@ -169,22 +169,23 @@ export interface PushEnv {
  * the conditions in this order and returns the first that holds:
  *
  *   - "server-off": the server has push off.
+ *   - "unsealed": the page runs inside the iOS app, and the connection is not sealed.
  *   - "ios-app": the page runs inside the iOS app, and the server offers no APNs
  *     or the app has no push bridge (136-4d). The app has no web push.
  *   - "ios-home-screen": an iPhone or iPad runs chalk outside the Home Screen app.
  *   - "unsupported": the browser has no push support.
- *   - "unsealed": the connection is not sealed.
+ *   - "unsealed": the page runs outside the app, and the connection is not sealed.
  *   - "denied": the user blocked notifications.
  *
- * Inside the app, when the server offers APNs and the bridge exists (nativePush),
- * it returns "unsealed" or "ready" and does not check the browser conditions.
- * If none of these holds, it returns "ready".
+ * Inside the app, it returns "ready" when the server offers APNs and the bridge
+ * exists (nativePush), and it does not check the browser conditions.
+ * Outside the app, if none of these holds, it returns "ready".
  */
 export function pushAvailability(e: PushEnv): PushAvailability {
   if (!e.serverEnabled) return "server-off";
   if (e.iosShell) {
-    if (!e.nativePush) return "ios-app";
-    return e.sealed ? "ready" : "unsealed";
+    if (!e.sealed) return "unsealed";
+    return e.nativePush ? "ready" : "ios-app";
   }
   if (e.appleMobile && !e.standalone) return "ios-home-screen";
   if (!e.supported) return "unsupported";

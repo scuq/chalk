@@ -4,12 +4,12 @@ A plan for a small iPhone app that wraps the chalk web page.
 The goal is that a voice call continues when the user switches apps or locks the screen.
 The design was written on 14 November 2026.
 
-**Status: in progress.** Slice 136-1 is built and measured on a device (2026-11-16). The gate passed. Slice 136-2 is built and checked on a device (2026-11-16), with two checks open. A follow-up of 136-2 has a device check open. Slice 136-4 is split into four parts: 136-4a, 136-4b, and 136-4c are built (2026-11-16), and the part 136-4d is built in parts 1 and 2. Slice 136-3 is built and checked on a device (2026-11-16), with two details open. Slice 136-5a is built (2026-11-16). Slices 136-5b, 136-5c, and 136-6 are not started.
+**Status: in progress.** Slice 136-1 is built and measured on a device (2026-11-16). The gate passed. Slice 136-2 is built and checked on a device (2026-11-16), with two checks open. A follow-up of 136-2 has a device check open. Slice 136-4 is split into four parts. Parts 136-4a, 136-4b, and 136-4c are built (2026-11-16). Part 136-4d is built in parts 1, 2, and 3. Part 3 is checked on a device. Slice 136-3 is built and checked on a device (2026-11-16), with two details open. Slice 136-5a is built (2026-11-16). Slices 136-5b, 136-5c, and 136-6 are not started.
 **Tag:** `#ios` → `tools/where.sh -g ios` (this file and the `ios/` directory).
 
 Decisions from the owner:
 
-- The owner has a Mac. The owner will buy a paid Apple Developer account, and it is not active yet (decision of 16 November 2026). Slices 136-4a to 136-4c, parts 1 and 2 of 136-4d, and 136-5a need no account. The rest of 136-4d, 136-5b, and 136-5c need it.
+- The owner has a Mac. The owner decided on 16 November 2026 to buy a paid Apple Developer account. The account is active, and the project has its team id. Slices 136-4a to 136-4c, parts 1 and 2 of 136-4d, and 136-5a need no account. Part 3 of 136-4d used it and ran on a real iPhone on 16 November 2026. Only 136-5b, 136-5c, and the production APNs key still need it.
 - The app is for the owner and the users of the owner's server. It is not a public App Store listing.
 - Push in the shell: chalkd gets a native APNs sender, and Apple sees only ciphertext (decision of 16 November 2026). See 136-4.
 - Distribution: TestFlight with a public link for the users of the owner's server (decision of 16 November 2026). See 136-5.
@@ -89,11 +89,11 @@ Slices 136-1, 136-2, and 136-3 are built, and 136-4a, 136-4b, and 136-4c are bui
 | 136-1 | Device test, the gate for the phase. See below. | done, 2026-11-16 |
 | 136-2 | The shell: server address screen, navigation rule, permission grant, safe areas, file download, app icon. | built, 2026-11-16. Open: the Settings toggle and the print window. See below. |
 | 136-3 | The web client knows the shell, and mutes on a phone call. See below. | built and checked on a device, 2026-11-16. Checks (d) and (e) open. |
-| 136-4 | Notifications in the shell: an APNs sender in chalkd. Four parts. See below. | 136-4a, 136-4b, and 136-4c built, 2026-11-16. 136-4d parts 1 and 2 built, 2026-11-16. The rest of 136-4d needs the account. |
+| 136-4 | Notifications in the shell: an APNs sender in chalkd. Four parts. See below. | 136-4a, 136-4b, and 136-4c built, 2026-11-16. 136-4d parts 1, 2, and 3 built, 2026-11-16. Part 3 is checked on a device. |
 | 136-4a | APNs sender package, provider token, config parsing. No account needed. | built, 2026-11-16 |
 | 136-4b | Device rows, a sealed WebSocket frame, fan-out from the dispatcher, chalkd builds the sender. No account needed. | built, 2026-11-16 |
 | 136-4c | chalkctl support for the key, and the `docs/deployment.md` env table. No account needed. | built, 2026-11-16 |
-| 136-4d | Shell registration, the bridge, the extension, the tap, a device test. Part 1 needs no account. Parts 1 and 2 need no account. The rest needs the paid account. | parts 1 and 2 built, 2026-11-16. The rest not started. |
+| 136-4d | Shell registration, the bridge, the extension, the tap, a device test. Part 1 needs no account. Parts 1 and 2 need no account. The rest needs the paid account. | parts 1, 2, and 3 built, 2026-11-16. Part 3 checked on a device. |
 | 136-5 | Distribution through TestFlight. Three parts. See below. | 136-5a built, 2026-11-16. 136-5b and 136-5c not started. |
 | 136-5a | Release preparation: Web Inspector in Debug only, deployment target 17.0, ignore rules, a CI job for the Swift tests, the export compliance record. No account needed. | built, 2026-11-16 |
 | 136-5b | The first upload to App Store Connect from the Mac of the owner. Needs the paid account. | not started |
@@ -467,7 +467,7 @@ Another chalk server that a user enters on the server screen gets no native push
 | 136-4a | APNs sender package, provider token, config parsing. | no | built, 2026-11-16 |
 | 136-4b | Device rows (a migration). A sealed WebSocket frame that carries the device token, the public key, and the authentication secret. Fan-out to both senders from the dispatcher, reminders included. chalkd builds the sender at start. | no | built, 2026-11-16 |
 | 136-4c | chalkctl: set the key that the operator supplies, keep it on `--force`, backfill it on `update`, and carry it on restore. The env table in `docs/deployment.md`. | no | built, 2026-11-16 |
-| 136-4d | Shell: registration for remote notifications, and a bridge that hands the token and the key to the page. The extension that decrypts. A tap that opens the channel. A device test. The bridge and the page (part 2) need no account. The Push capability, an app group, and an extension target need it. | parts 1 and 2 no, the rest yes | parts 1 and 2 built, 2026-11-16. The rest not started. |
+| 136-4d | Shell: registration for remote notifications, and a bridge that hands the token and the key to the page. The extension that decrypts. A tap that opens the channel. A device test. The bridge and the page (part 2) need no account. The Push capability, an app group, and an extension target need it. | parts 1 and 2 no, the rest yes | parts 1, 2, and 3 built, 2026-11-16. Part 3 checked on a device. |
 
 The env table in `docs/deployment.md` lists the variables since 136-4c.
 
@@ -802,6 +802,7 @@ The page:
 - `reconcileNativePush` runs after each welcome, beside `reconcilePush`.
   It acts only if this session has an APNs row, and it asks the app without a prompt.
   If the token changed or `key_current` is false, it uploads again, because Apple can change the token of a device.
+  Part 3 changed this: it now always uploads again (see "Result of 136-4d, part 3").
   If the user turned notifications off in the iOS Settings app, it sends `push_unsubscribe`.
   If the app is "unavailable", it does nothing.
 - The new error texts are `push_native_denied`, `push_native_unavailable`, and `push_apns_mismatch`.
@@ -823,7 +824,7 @@ The keys and their storage:
   If the stored item is damaged, it makes new keys.
 - The Keychain item is a generic password with the service `at.73c.chalk.push`.
   Its access is `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, because the extension must read it while the phone is locked after the first unlock.
-  The item has no access group yet.
+  The item had no access group in part 2. Part 3 added the shared group (see "Result of 136-4d, part 3").
   The group comes with the extension and the app group, which need the account.
 - The private key does not leave the Keychain.
   The page gets only the public key and the secret.
@@ -850,7 +851,8 @@ Tests:
   The Swift tests pass: 27 of 27.
   The Release build compiles.
 
-Not done, because it needs the paid account:
+Not done in part 2, because it needs the paid account.
+Part 3 built the items below. See "Result of 136-4d, part 3".
 
 - The Push Notifications capability (the `aps-environment` entitlement).
 - The Notification Service Extension target.
@@ -858,11 +860,117 @@ Not done, because it needs the paid account:
 - The app group, and the Keychain access group that the app shares with the extension.
 - The device test.
 
+#### Result of 136-4d, part 3
+
+Part 3 is the notification service extension.
+It needs the paid account, because it uses the Push capability and a shared Keychain access group.
+The extension decrypts each push on the device and replaces the constant alert text of chalkd.
+
+The extension:
+
+- `ios/chalkPush/` is a new target with `NotificationService.swift`, an `Info.plist`, and `chalkPush.entitlements`.
+- iOS runs it for each push with `mutable-content`.
+  It first prepares the fallback content: the title "chalk", the body "New notification", and no badge change.
+- It then reads the keys from the shared Keychain group.
+  It decrypts the `chalk` field (RFC 8291, the same as web push) and words the text with `PushContent`.
+  It replaces the title, the body, the thread, the badge, and the tap target with those of the payload.
+- If any step fails, or if the time of the extension runs out, the notification shows the fallback text.
+- The badge is the `unread` value of the payload.
+  The server counts the unread direct messages and the pending friend requests, as for web push.
+  A channel message therefore sends a badge of 0.
+
+The shared code:
+
+- `PushCrypto.swift`, `PushContent.swift`, and `PushKeys.swift` moved from `ios/chalk/` to `ios/PushShared/`.
+  The app and the extension both build them.
+
+The shared Keychain group:
+
+- Both targets have the access group `$(AppIdentifierPrefix)at.73c.chalk.shared` in their entitlements.
+  Both `Info.plist` files have the key `ChalkKeychainGroup` with the same value, and `KeychainStore.push` reads it.
+- The item keeps the access class `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, so the extension can read it while the phone is locked.
+- The `Info.plist` of the app also has `ChalkLegacyKeychainGroup`.
+  Its value is the default group of the app, where builds before the shared group saved the key.
+- `PushKeys.loadOrCreate(store, legacy:)` moves a valid key from the legacy item into the shared group and then deletes the legacy item.
+- `PushKeys.load` reads the keys and never makes them. The extension uses it.
+
+Two bugs that the device test found, both fixed:
+
+- The legacy store had no access group at first.
+  A Keychain query without a group matches the items of every group that the app can reach.
+  The delete of the legacy item therefore also deleted the item that the app had just moved.
+  The legacy store now names its own group.
+- The page compared only the token with the server row, so new keys on the device never reached the server.
+  The server kept the old public key and encrypted to it, and the extension could not decrypt and showed the fallback.
+  `planNativeReconcile` now always uploads the registration again, the token and the keys, after each welcome of a session with an APNs row.
+  The rejected alternative, for now, is to compare the stored key.
+  It needs the server to report the key that it holds.
+  The upload costs one frame for each welcome.
+
+The badge:
+
+- The bridge has a second request, `{op: "badge", count}`.
+  `PushBridge` sets the icon badge with `UNUserNotificationCenter.setBadgeCount`.
+  `badgeCount(_:)` accepts an integer of 0 or more and limits it to `maxBadge` (9999).
+  The page side is `nativeBadgeMessage`, `setNativeBadge`, and `MAX_NATIVE_BADGE` in `web/src/notify/ios-push.ts`.
+- Before this, nothing in the app cleared the badge that a push set.
+  The badge effect in `App.tsx` (50-7) now sends its count with `setNativeBadge`.
+  The effect also runs when the page becomes visible.
+
+Presence in the background:
+
+- chalkd sends no push to a user who has any device online.
+- `intendedPresence(mode, userIdle, hiddenInIOSApp)` in `web/src/presence/idle.ts` decides the presence.
+  In the app, in the "auto" mode, the page claims "away" when it goes to the background and "online" when it comes back.
+  A manual "online" or "away" mode wins.
+- The rule stays per user.
+  An online desktop still suppresses the push to the phone, so the user gets no double notification.
+  The developer decided to keep this.
+
+The page:
+
+- `pushAvailability` checks the sealed connection before the bridge.
+  The push settings in the app now show "push needs the sealed connection" and not "not available".
+
+Tests:
+
+- `PushKeyMigrationTests` and a `badgeCount` test in `ios/chalkTests/PushTests.swift`.
+- New tests in `web/src/notify/ios-push.test.ts`, `web/src/presence/idle.test.ts`, and `web/src/notify/push.test.ts`.
+
+Device test (16 November 2026, a real iPhone, the APNs sandbox, the dev server through a tunnel):
+
+- The extension decrypts and shows the real title ("@" and the handle of the sender) and the body "New message".
+- A direct message sets the badge to 1. The badge clears after the receiving user opens the chat and reads the message.
+- A push arrives when the app is only in the background (the home gesture), and not only when the app is closed.
+- A tap on the notification opens chalk on that direct message. This check passed.
+
+Facts from the device test:
+
+- While Xcode is attached to the app, a swipe that closes the app does not close its connection.
+  The server then keeps the user "online" and sends no push.
+  Press Stop in Xcode before the test.
+- When the phone is locked, the notification shows only in the Notification Center. This is normal for iOS.
+- A channel message sends a badge of 0, because the badge counts only direct messages and friend requests.
+
+To find a fault in the extension:
+
+1. Connect the phone to the Mac.
+2. Open Console.app and select the device.
+3. Filter the log for `chalkPush`.
+4. Send a push and read the lines of the extension.
+
+If the notification shows "New notification" and not the real text, the extension ran and used the fallback.
+
+Open:
+
+- A push through the production APNs key is not tested. The test used the sandbox.
+- The comparison of the stored key (see above) is a follow-up.
+
 ### 136-5 distribution
 
 Free signing expires after 7 days, so it served 136-1 only.
 The owner decided on 16 November 2026 to distribute the app through TestFlight, with a public link for the users of the owner's server.
-This needs the paid Apple Developer account, which is not active yet.
+This needs the paid Apple Developer account, which is active.
 The slice has three parts. Part a needs no account and is built.
 
 | Part | Content | Needs the account | Status |

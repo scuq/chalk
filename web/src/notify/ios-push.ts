@@ -2,9 +2,13 @@
 // registration and sends it to the server. The app is the iOS shell in ios/.
 //
 // The app gives the page one WebKit reply handler, window.webkit.messageHandlers.chalkPush.
-// It exists only inside the app. The page posts {op: "register", prompt}.
-// If prompt is true, the app shows the iOS permission prompt when the user has not decided yet.
-// The app answers with one of two objects:
+// It exists only inside the app. The page posts one of two requests:
+//
+//   - {op: "register", prompt}: if prompt is true, the app shows the iOS permission prompt
+//     when the user has not decided yet.
+//   - {op: "badge", count}: the app sets the badge on the app icon and answers true (see setNativeBadge).
+//
+// The app answers a register request with one of two objects:
 //
 //   - {ok: true, token, p256dh, auth, topic, environment}: token is lowercase hex,
 //     p256dh is a 65-byte P-256 public key, auth is a 16-byte secret, both in base64url.
@@ -15,7 +19,10 @@
 // The token and the public key go to the server only on the sealed WebSocket.
 //
 // Reconcile rule: after each welcome, a session with an APNs row asks the app without a prompt.
-// If the token changed or the server key is not current, the page uploads again.
+// The page always uploads the registration again, the token and the keys.
+// It does not compare them with the server row, because the server cannot report the key that it holds.
+// If the device keys changed and the server kept the old key, the extension could not decrypt
+// and showed its fallback text.
 // If the user turned notifications off in the iOS Settings app, the page sends push_unsubscribe.
 // If the app cannot answer, the page does nothing.
 //
@@ -109,15 +116,15 @@ export type NativeReconcileAction = { kind: "none" } | { kind: "upload"; scope: 
  * planNativeReconcile returns the step that makes the server row of this
  * session agree with the app. It does nothing without an APNs row. If the
  * app reports "denied", it drops the row. If the app is "unavailable", it does
- * nothing. If the token differs or key_current is false, it uploads again with
- * the scope of the row.
+ * nothing. Otherwise it always uploads again with the scope of the row, also
+ * when the token is the same, because the server cannot report the key it holds.
+ * The new upload replaces a key that the app changed.
  */
 export function planNativeReconcile(server: PushStatePayload, reply: NativeReply): NativeReconcileAction {
   if (!server.enabled || !server.apns_topic || !server.subscribed || server.kind !== "apns") return { kind: "none" };
   if (!reply.ok) return reply.error === "denied" ? { kind: "drop-server" } : { kind: "none" };
   const scope: PushScope = server.scope === "all" ? "all" : "dms";
-  if (reply.reg.token !== server.endpoint || !server.key_current) return { kind: "upload", scope };
-  return { kind: "none" };
+  return { kind: "upload", scope };
 }
 
 // register asks the app for a registration. It never throws: a missing bridge or a failed post gives "unavailable".
@@ -211,4 +218,27 @@ export function installIOSOpenListener(onOpen: (t: OpenTarget) => void): () => v
   };
   window.addEventListener(IOS_OPEN_EVENT, handler);
   return () => window.removeEventListener(IOS_OPEN_EVENT, handler);
+}
+
+/** MAX_NATIVE_BADGE is the largest count that the page sends to the app. The app has the same limit, PushBridge.maxBadge. */
+export const MAX_NATIVE_BADGE = 9999;
+
+/**
+ * nativeBadgeMessage returns the badge request for the count n. A count that
+ * is not finite becomes 0. Other counts round down and stay between 0 and MAX_NATIVE_BADGE.
+ */
+export function nativeBadgeMessage(n: number): { op: "badge"; count: number } {
+  const count = Number.isFinite(n) ? Math.min(MAX_NATIVE_BADGE, Math.max(0, Math.floor(n))) : 0;
+  return { op: "badge", count };
+}
+
+/**
+ * setNativeBadge sets the badge on the app icon to n. It does nothing outside
+ * the iOS app, and it ignores a failed post. Nothing else in the app clears the
+ * badge that a push sets (136-4d).
+ */
+export function setNativeBadge(n: number): void {
+  const bridge = nativePushBridge();
+  if (!bridge) return;
+  bridge.postMessage(nativeBadgeMessage(n)).catch(() => {});
 }

@@ -155,6 +155,7 @@ private final class MemoryStore: SecretStore {
     var saves = 0
     var refuse = false
     func load() -> Data? { data }
+    func delete() { data = nil }
     func save(_ d: Data) -> Bool {
         if refuse { return false }
         data = d
@@ -193,6 +194,15 @@ struct PushBridgeTests {
         #expect(keys.privateKey.rawRepresentation == again.privateKey.rawRepresentation)
     }
 
+    @Test func badgeCountIsAWholeNumberFromZeroTo9999() {
+        #expect(PushBridge.badgeCount(["op": "badge", "count": 3]) == 3)
+        #expect(PushBridge.badgeCount(["op": "badge", "count": 0]) == 0)
+        #expect(PushBridge.badgeCount(["op": "badge", "count": 100_000]) == 9999)
+        #expect(PushBridge.badgeCount(["op": "badge", "count": -1]) == nil)
+        #expect(PushBridge.badgeCount(["op": "badge", "count": "3"]) == nil)
+        #expect(PushBridge.badgeCount(["op": "badge"]) == nil)
+    }
+
     // The format is the one that parseNativeReply in web/src/notify/ios-push.ts accepts.
     @Test func replyHasThePageFormat() throws {
         let keys = try PushKeys.loadOrCreate(MemoryStore())
@@ -220,5 +230,36 @@ struct PushBridgeTests {
         #expect(PushOpen.target(from: ["chalk_thread": th]) == nil)
         #expect(PushOpen.target(from: [:]) == nil)
         #expect(PushOpen.userInfo(for: .fallback).isEmpty)
+    }
+}
+
+@MainActor
+struct PushKeyMigrationTests {
+    @Test func aKeyFromBeforeTheSharedGroupMovesIntoIt() throws {
+        let old = MemoryStore()
+        let original = try PushKeys.loadOrCreate(old)
+        let shared = MemoryStore()
+        let moved = try PushKeys.loadOrCreate(shared, legacy: old)
+        #expect(moved.privateKey.rawRepresentation == original.privateKey.rawRepresentation)
+        #expect(moved.auth == original.auth)
+        #expect(old.data == nil)
+        #expect(PushKeys.load(shared)?.auth == original.auth)
+    }
+
+    @Test func theExtensionNeverMakesAKey() {
+        let empty = MemoryStore()
+        #expect(PushKeys.load(empty) == nil)
+        #expect(empty.saves == 0)
+        empty.data = Data([1, 2, 3])
+        #expect(PushKeys.load(empty) == nil)
+    }
+
+    @Test func aDamagedLegacyItemIsNotMoved() throws {
+        let old = MemoryStore()
+        old.data = Data([9, 9])
+        let shared = MemoryStore()
+        _ = try PushKeys.loadOrCreate(shared, legacy: old)
+        #expect(shared.saves == 1)
+        #expect(old.data == Data([9, 9]))
     }
 }

@@ -4,6 +4,8 @@ import Security
 
 /// A place that keeps one secret, which is a block of bytes.
 protocol SecretStore {
+    /// Removes the saved bytes.
+    func delete()
     /// Returns the saved bytes, or nil if there are none.
     func load() -> Data?
     /// Replaces the saved bytes, and reports whether the store kept them.
@@ -14,14 +16,24 @@ protocol SecretStore {
 ///
 /// The item is readable after the first unlock of the device, and it never leaves the device.
 /// The notification extension must read it while the phone is locked.
-/// An access group, which the extension and the app group need, is not set yet because they need the paid account.
+/// `accessGroup` names the Keychain access group of the item.
+/// If it is nil, a query matches the items of every group that the process can reach.
+/// The app and the notification extension share the item through the group in the `ChalkKeychainGroup` key of their `Info.plist` files.
 struct KeychainStore: SecretStore {
     let service: String
     let account: String
     var accessGroup: String?
 
     /// The item that holds the push keys of this device.
-    static let push = KeychainStore(service: "at.73c.chalk.push", account: "device-key")
+    static let push = KeychainStore(service: "at.73c.chalk.push", account: "device-key",
+                                    accessGroup: Bundle.main.object(forInfoDictionaryKey: "ChalkKeychainGroup") as? String)
+
+    /// The item in the own default group of the app, where older builds saved the keys.
+    ///
+    /// It names its group, the `ChalkLegacyKeychainGroup` key of the app `Info.plist`.
+    /// Without a group, a query also matches the shared item, and a delete would remove it.
+    static let legacyPush = KeychainStore(service: "at.73c.chalk.push", account: "device-key",
+                                          accessGroup: Bundle.main.object(forInfoDictionaryKey: "ChalkLegacyKeychainGroup") as? String)
 
     private var query: [String: Any] {
         var q: [String: Any] = [
@@ -71,14 +83,24 @@ struct PushKeys {
     /// The keys could not be made or saved.
     enum Failure: Error { case save }
 
+    /// Returns the keys in store, or nil if the store has none or its item is not valid.
+    ///
+    /// It never makes or saves a key. The notification extension uses it.
+    static func load(_ store: SecretStore) -> PushKeys? {
+        guard let saved = store.load() else { return nil }
+        return decode(saved)
+    }
+
     /// Returns the keys in store, and makes and saves new keys if the store has none.
     ///
+    /// If the store has no keys and `legacy` holds valid keys, it saves them in the store and deletes the item in `legacy`.
     /// If the saved item has the wrong length or holds an invalid key, it makes new keys and replaces the item.
     /// It throws `Failure.save` if the random bytes or the save fail.
-    static func loadOrCreate(_ store: SecretStore) throws -> PushKeys {
-        if let saved = store.load(), saved.count == keyLength + authLength,
-           let key = try? P256.KeyAgreement.PrivateKey(rawRepresentation: saved.prefix(keyLength)) {
-            return PushKeys(privateKey: key, auth: Data(saved.suffix(authLength)))
+    static func loadOrCreate(_ store: SecretStore, legacy: SecretStore? = nil) throws -> PushKeys {
+        if let keys = load(store) { return keys }
+        if let legacy, let old = legacy.load(), let keys = decode(old), store.save(old) {
+            legacy.delete()
+            return keys
         }
         let key = P256.KeyAgreement.PrivateKey()
         var auth = Data(count: authLength)
@@ -86,6 +108,13 @@ struct PushKeys {
         guard status == errSecSuccess else { throw Failure.save }
         guard store.save(key.rawRepresentation + auth) else { throw Failure.save }
         return PushKeys(privateKey: key, auth: auth)
+    }
+
+    private static func decode(_ saved: Data) -> PushKeys? {
+        guard saved.count == keyLength + authLength,
+              let key = try? P256.KeyAgreement.PrivateKey(rawRepresentation: saved.prefix(keyLength))
+        else { return nil }
+        return PushKeys(privateKey: key, auth: Data(saved.suffix(authLength)))
     }
 }
 

@@ -251,3 +251,21 @@ export function installIdleWatch(
     },
   };
 }
+
+/**
+ * intendedPresence returns the presence that the page claims.
+ * If mode is "online" or "away", it returns mode. If mode is "auto", it returns
+ * "away" when userIdle is true or hiddenInIOSApp is true, and "online" otherwise.
+ *
+ * hiddenInIOSApp is true when the page is in the background in the iOS app.
+ * chalkd sends no push to a user who has a device online (136-4d), so a
+ * backgrounded phone must claim "away" to get push.
+ */
+export function intendedPresence(
+  mode: "auto" | "online" | "away",
+  userIdle: boolean,
+  hiddenInIOSApp: boolean,
+): "online" | "away" {
+  if (mode !== "auto") return mode;
+  return userIdle || hiddenInIOSApp ? "away" : "online";
+}
