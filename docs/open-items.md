@@ -5,7 +5,7 @@ What is **not** done. Shipped history lives in [phase-log.md](phase-log.md)
 is the authority on what is still open, and `CLAUDE.md` points here rather than
 carrying it.
 
-Latest release: **v0.12.5** — keep this in step with the topmost `## vX.Y.Z`
+Latest release: **v0.12.6** — keep this in step with the topmost `## vX.Y.Z`
 heading in `CHANGELOG.md`. The `/release` skill updates it as part of cutting a
 release. A stale pointer is worse than none, because it still reads as current.
 
@@ -630,13 +630,14 @@ same space.
 - **A native macOS app** (138, [phases/PHASE-138-MACOS.md](phases/PHASE-138-MACOS.md)):
   in progress. Slice 138-1 is written, not compiled, and not run, because the
   development machine has no Swift toolchain. It moves the shared Swift files to
-  `ios/Shared/` and adds a bare macOS shell in `ios/chalkMac/`. Open: the
-  `chalkMac` target in Xcode, the build of the `chalkMac` scheme, `xcodebuild test`
-  for the `chalk` scheme to prove that the file move broke nothing, and the
-  10-item measurement checklist on the Mac. Slices 138-2 to 138-7 need no
-  paid account. Slices 138-8 (native push), 138-9 (Developer ID signature and
-  notarization), and 138-10 (self-update) need the paid Apple Developer account,
-  which is not active yet. Slice 138-11 removes the Electron build for macOS
+  `ios/Shared/` and adds a bare macOS shell in `ios/chalkMac/`. The
+  `chalkMac` target is in the project file, written by hand. Open: the build and
+  run of the `chalkMac` scheme, `xcodebuild test` for the `chalk` scheme to prove
+  that the file move broke nothing, and the 10-item measurement checklist on the
+  Mac. If Xcode rewrites the target, the owner reports the change. The paid
+  Apple Developer account is active, so it blocks none of the slices 138-8
+  (native push), 138-9 (Developer ID signature and notarization), and 138-10
+  (self-update). Slice 138-11 removes the Electron build for macOS
   after a parity review. Until then, the Electron build stays.
 - **The SFU seam** (voice design Slice I) for rooms too large for a mesh.
 - **Governance `set_config` proposals.**

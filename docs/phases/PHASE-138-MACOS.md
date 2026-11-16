@@ -4,7 +4,7 @@ A plan for a native macOS app, written in Swift, that wraps the chalk web page i
 It replaces the Electron build (phase 104) on macOS only.
 The design is dated 16 November 2026.
 
-**Status: in progress.** Slice 138-1 exists as code that nobody compiled or ran. The measurement is open. Slices 138-2 to 138-11 are not started.
+**Status: in progress.** Slice 138-1 exists as code that nobody compiled or ran. The measurement is open, and it waits only on the build and the checklist on the Mac. Slices 138-2 to 138-11 are not started.
 **Tag:** `#macos` → `tools/where.sh -g macos` (this file, `ios/chalkMac/`, and `ios/Shared/`).
 
 Decisions from the owner (16 November 2026):
@@ -45,7 +45,7 @@ The other gaps get a slice or a recorded limit after the measurement.
 
 ### Project layout
 
-- Add a macOS app target, `chalkMac`, to `ios/chalk.xcodeproj`. The owner adds the target in Xcode, because the project file is maintained there.
+- Add a macOS app target, `chalkMac`, to `ios/chalk.xcodeproj`. The target is in `ios/chalk.xcodeproj/project.xcproj`. It was written by hand, because the project file is readable JSON.
 - Move the platform-neutral Swift files from `ios/chalk/` to a new synchronized folder, `ios/Shared/`. Both app targets compile that folder.
 - Put the macOS-only code in `ios/chalkMac/`.
 - Set the deployment target to macOS 14.0. The shared code uses `@Observable`, which needs macOS 14.
@@ -55,12 +55,12 @@ The plan moves these files to `ios/Shared/`:
 
 - `AppModel.swift`
 - `LinkRule.swift`
-- `PushContent.swift`
-- `PushCrypto.swift`
-- `PushKeys.swift`
 - `ServerAddress.swift`
 - The WebKit-only half of `PushRegistrar.swift` (`PushOpenRouter`, `PushBridge`, `originString`)
 
+`PushContent.swift`, `PushCrypto.swift`, and `PushKeys.swift` are already in `ios/PushShared/`, since phase 136-4d.
+The members of that folder are the `chalk` target and the `chalkPush` extension.
+In slice 138-8, the macOS app joins that folder and the `chalkPush` extension design.
 
 `PhoneCallTracker.swift` stays in the iOS target, and `ShellMark` gets a macOS sibling.
 The tests in `ios/chalkTests/` that use only Foundation and CryptoKit run for both platforms.
@@ -102,8 +102,8 @@ A document-start user script defines `window.chalkDesktop` and forwards `idle.ge
 
 - The app has the hardened runtime and no App Sandbox. An app in the sandbox cannot replace its own bundle.
 - The release job signs with a Developer ID certificate, notarizes with `notarytool`, and staples the ticket.
-- The archive is `chalk-desktop-<version>-macos-native.zip` and holds `chalk.app`. The name matches the `chalk-desktop-*` glob, so `SHA256SUMS.desktop` and its Ed25519 signature cover it with no change to the signing steps.
-- The version rule of `PHASE-136-IOS.md` ("Version of the app") applies when the target is created. The project file carries the chalk version, and the owner sets it by hand.
+- The archive is `chalk-desktop-<version>-macos-native.zip` and holds `chalk.app`. The built product is `chalkMac.app`, so slice 138-9 renames it at packaging, or finds another solution then. The name matches the `chalk-desktop-*` glob, so `SHA256SUMS.desktop` and its Ed25519 signature cover it with no change to the signing steps.
+- The version rule of `PHASE-136-IOS.md` ("Version of the app") applies when the target is created. The project file carries the chalk version (`MARKETING_VERSION` 0.12.5 for `chalkMac`), and the owner sets it by hand.
 - The updater is a Swift port of phase 105. It reads the same release, the same signed table, and the same pinned key as `desktop/src/selfupdate/key.ts`.
 - Before the swap, the updater also checks that the new bundle has a valid code signature from the same team. `PHASE-105-SELFUPDATE.md` names this requirement for a notarized app.
 - A test in `desktop/` reads both key constants and fails when they differ.
@@ -112,26 +112,26 @@ A document-start user script defines `window.chalkDesktop` and forwards `idle.ge
 
 - The first try uses the iOS bundle identifier, `at.73c.chalk`, for the macOS app. One `CHALK_APNS_TOPIC` then serves both, and chalkd needs no change.
 - If Apple does not issue a Developer ID profile with push for that identifier, chalkd gets a list of topics. That is a server slice, and it needs approval first.
-- A notification service extension decrypts a push while the app is closed. It uses `PushCrypto` and `PushContent`. The rest of 136-4d needs the same extension, app group, and keychain access group, so both platforms share one design.
+- A notification service extension decrypts a push while the app is closed. It uses `PushCrypto` and `PushContent` from `ios/PushShared/`. The `chalkPush` extension of 136-4d has the same extension, app group, and keychain access group, so both platforms share one design.
 - The app stays alive in the menu bar, so a push and a page banner can both fire for one message. Slice 138-8 reads the fan-out rule in `internal/server/push_dispatch.go` first, then picks one source.
 
 ## Slices
 
-Slices 138-1 to 138-7 need no paid Apple Developer account. Slices 138-8 to 138-10 need it.
-The owner has no active account yet (see PHASE-136-IOS.md).
+The paid Apple Developer account is active, and phase 136-5b uploaded the first TestFlight build with it (see PHASE-136-IOS.md).
+No account blocks any slice.
 
 | Slice | Content | Status |
 | --- | --- | --- |
-| 138-1 | Measurement. Create the target and `ios/Shared/`. Load the home server in a bare window. Run the checklist below on the Mac. Create the phase doc, the tags line, and the index row. | written, not compiled, measurement open |
+| 138-1 | Measurement. Create the target and `ios/Shared/`. Load the home server in a bare window. Run the checklist below on the Mac. Create the phase doc, the tags line, and the index row. | written, not compiled, measurement open (waits on the Mac) |
 | 138-2 | The rest of shell parity: the server list in the picker, window position memory, and plain http to loopback in a debug build. The first macOS test target. Slice 138-1 already holds the navigation and permission rules, downloads, child windows, and the Switch Server command. | not started |
 | 138-3 | Menu bar item and hide on close. A call continues while the window is hidden. | not started |
 | 138-4 | Idle and lock detection through the `chalkDesktop` bridge. | not started |
 | 138-5 | Notification Center banners while the app runs, through `chalkNotify`. A click opens the channel. | not started |
 | 138-6 | Dock badge and menu bar unread mark, through `chalkBadge`. | not started |
 | 138-7 | Gaps from 138-1. Each failed item gets a native path or a recorded limit that the owner accepts. | not started |
-| 138-8 | Native push: token registration for macOS, the entitlement, the extension, and the availability text in the page. Needs the account. | not started |
-| 138-9 | Developer ID signature, notarization, the `release.yml` job, a macOS test step in `ci.yml`, and the README download text. Needs the account. | not started |
-| 138-10 | Self-update in Swift. Needs the account. | not started |
+| 138-8 | Native push: token registration for macOS, the entitlement, the extension, and the availability text in the page. | not started |
+| 138-9 | Developer ID signature, notarization, the `release.yml` job, a macOS test step in `ci.yml`, and the README download text. | not started |
+| 138-10 | Self-update in Swift. | not started |
 | 138-11 | Removal of the Electron build for macOS, after a parity review with the owner. | not started |
 
 Commit messages are `phase 138-<slice>: <summary>`. The owner commits.
@@ -164,31 +164,39 @@ The owner builds it on the Mac, and when the Mac finds a compile error, the same
   - A file open panel.
   - Child windows.
 - New `ios/chalkMac/chalkMac.entitlements`: hardened runtime entitlements for audio input and camera.
-- `ios/chalk.xcodeproj/project.xcproj`: one line added, so that the iOS target compiles `ios/Shared/`.
+- `ios/chalk.xcodeproj/project.xcproj`: one line so that the iOS target compiles `ios/Shared/`, and the new `chalkMac` target (see "The `chalkMac` target").
 
 ### Differences from the design
 
-- The push files stay in `ios/chalk/` for now: `PushContent.swift`, `PushCrypto.swift`, `PushKeys.swift`, and `PushOpenRouter` and `PushBridge` in `PushRegistrar.swift`. They move to `ios/Shared/` in slice 138-8, when the macOS app first uses them.
+- `PushContent.swift`, `PushCrypto.swift`, and `PushKeys.swift` are in `ios/PushShared/`, not in `ios/chalk/`. Phase 136-4d moved them. `PushOpenRouter` and `PushBridge` stay in `ios/chalk/PushRegistrar.swift`. The macOS app first uses them in slice 138-8.
+- The product name is `chalkMac`, so the bundle is `chalkMac.app`, not `chalk.app`. The project file names a target product by its path in the Products group, and `chalk.app` is already the iOS product. Two products with one path would collide. The display name is `chalk`, but the app menu has the name `chalkMac`. Slice 138-9 gives the archive `chalk.app`.
+- The target has no asset catalog and no app icon yet. The app has the generic icon in the measurement build.
 - There is no macOS test target yet. It arrives in 138-2 with the first macOS logic that has tests.
   For 138-1 the Mac check is to build the `chalkMac` scheme, and to run `xcodebuild test` for the `chalk` scheme. The second run proves that the file move did not break the iOS app.
 - 138-1 does not define `window.chalkDesktop`. That arrives in 138-4.
 - The web view uses only public WebKit API.
   If screen share fails in the measurement, a private WebKit preference is one possible path. That decision belongs to slice 138-7.
 
-### Manual steps for the owner in Xcode
+### The `chalkMac` target
 
-1. In `ios/chalk.xcodeproj`, add a macOS App target named `chalkMac` (SwiftUI). Keep the repository files in `ios/chalkMac/`, and discard the template sources that Xcode generates there, except an asset catalog.
-2. Set the folder membership: `ios/Shared/` belongs to `chalk` and `chalkMac`, and `ios/chalkMac/` belongs to `chalkMac`.
-3. Set the target settings:
-   - Product name: `chalk`.
-   - Bundle identifier: `at.73c.chalk`.
-   - macOS deployment target: 14.0.
-   - Hardened runtime: on.
-   - App Sandbox capability: removed.
-   - `CODE_SIGN_ENTITLEMENTS`: `chalkMac/chalkMac.entitlements`.
-4. Add the usage strings `NSMicrophoneUsageDescription` and `NSCameraUsageDescription`, with the same text as `ios/Info.plist`.
-5. Build the `chalkMac` scheme, and run `xcodebuild test` for the `chalk` scheme.
-6. Run the checklist below, and write each result into this file.
+The target has these settings:
+
+- Folders: `Shared` (members `chalk` and `chalkMac`) and `chalkMac` (member `chalkMac`).
+- SDK: `macosx`. Deployment target: macOS 14.0.
+- Hardened runtime: on. App Sandbox: off (`ENABLE_APP_SANDBOX` is `NO`).
+- Entitlements: `chalkMac/chalkMac.entitlements`.
+- Bundle identifier: `at.73c.chalk`. `MARKETING_VERSION`: 0.12.5. Display name: `chalk`.
+- Generated Info.plist with the microphone and camera usage strings of `ios/Info.plist`.
+- Default isolation: MainActor, as in the iOS target.
+
+### Steps for the owner on the Mac
+
+1. Open `ios/chalk.xcodeproj`. Let Xcode create the `chalkMac` scheme, because no shared scheme exists.
+2. Build and run the `chalkMac` scheme.
+3. Run `xcodebuild test` for the `chalk` scheme.
+4. Run the checklist below, and write each result into this file.
+
+If Xcode rejects or rewrites the hand-written target, the owner reports what Xcode changed.
 
 ### Checklist for 138-1
 
@@ -210,7 +218,7 @@ Record the macOS version with the results.
 
 Item 4 decides if slice 138-3 needs a native measure against web view throttling.
 Item 7 is expected to fail, because Apple ties passkeys in an app to domains listed at build time.
-The result is recorded, and passkeys stay a known limit unless the measurement shows a path.
+The result is recorded, and passkeys stay a known limit unless the measurement finds a path.
 
 ## Paperwork
 
