@@ -4,13 +4,15 @@ A plan for a small iPhone app that wraps the chalk web page.
 The goal is that a voice call continues when the user switches apps or locks the screen.
 The design was written on 14 November 2026.
 
-**Status: in progress.** Slice 136-1 is built and measured on a device (2026-11-16). The gate passed. Slice 136-2 is built and checked on a device (2026-11-16), with two checks open. A follow-up of 136-2 has a device check open. Slices 136-3 to 136-6 are not started.
+**Status: in progress.** Slice 136-1 is built and measured on a device (2026-11-16). The gate passed. Slice 136-2 is built and checked on a device (2026-11-16), with two checks open. A follow-up of 136-2 has a device check open. Slice 136-4 is split into four parts: 136-4a is built (2026-11-16) and the parts 136-4b to 136-4d are not started. Slices 136-3, 136-5, and 136-6 are not started.
 **Tag:** `#ios` → `tools/where.sh -g ios` (this file and the `ios/` directory).
 
 Decisions from the owner:
 
-- The owner has a Mac and no paid Apple Developer account.
+- The owner has a Mac. The owner will buy a paid Apple Developer account, and it is not active yet (decision of 16 November 2026). Slices 136-4a to 136-4c need no account. Slice 136-4d and slice 136-5 need it.
 - The app is for the owner and the users of the owner's server. It is not a public App Store listing.
+- Push in the shell: chalkd gets a native APNs sender, and Apple sees only ciphertext (decision of 16 November 2026). See 136-4.
+- Distribution: TestFlight with a public link for the users of the owner's server (decision of 16 November 2026). See 136-5.
 
 ---
 
@@ -80,15 +82,19 @@ The app is a thin shell on the pattern of the desktop app (phase 104, [PHASE-104
 
 ## Slices
 
-Slices 136-1 and 136-2 are built. The other slices are not started.
+Slices 136-1 and 136-2 are built, and 136-4a is built. The other slices and parts are not started.
 
 | Slice | Content | Status |
 | --- | --- | --- |
 | 136-1 | Device test, the gate for the phase. See below. | done, 2026-11-16 |
 | 136-2 | The shell: server address screen, navigation rule, permission grant, safe areas, file download, app icon. | built, 2026-11-16. Open: the Settings toggle and the print window. See below. |
 | 136-3 | The web client knows the shell, and mutes on a phone call. See below. | not started |
-| 136-4 | Notifications in the shell. A decision first. See below. | not started |
-| 136-5 | Distribution. See below. | not started |
+| 136-4 | Notifications in the shell: an APNs sender in chalkd. Four parts. See below. | 136-4a built, 2026-11-16. 136-4b to 136-4d not started. |
+| 136-4a | APNs sender package, provider token, config parsing. No account needed. | built, 2026-11-16 |
+| 136-4b | Device rows, a sealed WebSocket frame, fan-out from the dispatcher, chalkd builds the sender. No account needed. | not started |
+| 136-4c | chalkctl support for the key, and the `docs/deployment.md` env table. No account needed. | not started |
+| 136-4d | Shell registration, the bridge, the extension, the tap, a device test. Needs the paid account. | not started |
+| 136-5 | Distribution through TestFlight. Needs the paid account. See below. | not started |
 | 136-6 | Optional: lock-screen call controls and audio route selection. Use CallKit only if a later iOS version removes the conflict. | not started |
 
 ### 136-1 device test
@@ -348,25 +354,178 @@ Check them before the slice is scoped:
 
 ### 136-4 notifications
 
-Expected: a web view app has no web push, so phase 65 ([PHASE-65-PUSH.md](PHASE-65-PUSH.md)) does not work inside it.
-136-1 gives the facts.
-Two options exist:
+A web view app has no web push, so phase 65 ([PHASE-65-PUSH.md](PHASE-65-PUSH.md)) does not work inside it.
+136-1 measured this: `PushManager` and `Notification` are absent in the shell.
 
-- A native Apple Push Notification service (APNs) sender in chalkd.
-  It adds an Apple key and a new third party to the threat model.
+#### Decision
+
+The owner decided on 16 November 2026 to build a native Apple Push Notification service (APNs) sender in chalkd.
+Apple may see only ciphertext.
+
+- The app makes its own P-256 key pair and a 16-byte authentication secret.
+  It uploads the public key and the secret with the APNs device token, in the same shape as a Web Push subscription.
+- chalkd encrypts the push payload with the code of phase 65 (RFC 8291, `aes128gcm`, padded to one fixed length).
+  It sends the ciphertext through APNs.
+- A Notification Service Extension in the app decrypts the ciphertext and fills in the notification.
+- If the extension fails, the phone shows a constant fallback text.
+  The text is "chalk" and "New notification".
+
+Rejected:
+
+- Plain metadata in the push.
+  Apple could read the sender handle and the channel name.
+- Generic text only, with no extension.
+  Apple sees nothing, but the notification is the least useful.
 - No push in the shell.
+
+Rules that stay the same as Web Push (phase 65):
+
+- Push is opt-in per device.
+- The scope is direct messages or all messages.
+- A user gets at most one message push per channel in 60 s.
+- Guests get no push.
+- A subscription is bound to the login session.
+- The frames go only on the sealed WebSocket.
+
+Consequence: only a server that holds the `.p8` key of the developer team of the app can push to the app.
+Another chalk server that a user enters on the server screen gets no native push.
+
+#### Parts
+
+| Part | Content | Needs the account | Status |
+| --- | --- | --- | --- |
+| 136-4a | APNs sender package, provider token, config parsing. | no | built, 2026-11-16 |
+| 136-4b | Device rows (a migration). A sealed WebSocket frame that carries the device token, the public key, and the authentication secret. Fan-out to both senders from the dispatcher, reminders included. chalkd builds the sender at start. | no | not started |
+| 136-4c | chalkctl: set the key that the operator supplies, keep it on `--force`, backfill it on `update`, and carry it on restore. The env table in `docs/deployment.md`. | no | not started |
+| 136-4d | Shell: registration for remote notifications, and a bridge that hands the token and the key to the page. The extension that decrypts. A tap that opens the channel. A device test. It needs the Push capability, an app group, and an extension target. | yes | not started |
+
+The env table in `docs/deployment.md` follows in 136-4c.
+Until 136-4b and 136-4c are done, the variables have no effect, so the table does not list them yet.
+
+#### Result of 136-4a
+
+Built on 16 November 2026.
+The code is in the new package `internal/apns/` (`apns.go`, `apns_test.go`).
+It uses only the Go standard library and the existing code of chalk, so it adds no module.
+
+- `ParseKey(p8, keyID, teamID)` reads the `.p8` key of Apple.
+  The key can be PEM or the bare base64 of its body, so it fits on one line of an environment file.
+  The key must be a PKCS#8 P-256 key.
+  The key id and the team id are each 10 letters and digits.
+- The provider token is an ES256 JWT with the header fields `alg` and `kid` and the claims `iss` (the team id) and `iat`.
+  The key caches the token and renews it after 40 minutes.
+  Apple rejects a token that is older than one hour, and asks providers not to make a new token more often than every 20 minutes.
+  If APNs answers 403 with `ExpiredProviderToken`, the key drops the cached token, so the next send signs a new one.
+  A clock that went back also gives a new token.
+- `Sender.Send(ctx, Device{Token, P256dh, Auth}, payload, Options{TTL, CollapseID, Priority})` does these steps:
+  1. It checks the device token. The token must be hexadecimal and at most 200 characters, so it cannot change the request path.
+  2. It encrypts the payload with `webpush.Encrypt`.
+  3. It posts to `/3/device/<token>` on `api.push.apple.com` (production) or `api.sandbox.push.apple.com` (sandbox).
+     Builds that Xcode installs use the sandbox. TestFlight builds use production.
+- The headers are `authorization: bearer <token>`, `apns-topic` (the bundle id), `apns-push-type: alert`, `apns-priority`, `apns-expiration`, and `apns-collapse-id` if set.
+  The priority is 10 by default and 5 for `PriorityNormal`.
+  The expiration is the time now plus the TTL as Unix time, or 0 if the TTL is zero.
+  A collapse id of more than 64 bytes gives `ErrCollapseID`.
+- The JSON body has exactly two keys.
+  - `aps` holds the constant fallback alert, `mutable-content: 1` (this makes iOS run the extension), and `sound: default`.
+  - `chalk` holds the base64 of the RFC 8291 ciphertext.
+  The ciphertext has one length, so every body has one length, well under the APNs limit of 4096 bytes.
+  The body has no badge count in clear text. The count is inside the ciphertext, and the extension sets it.
+- The answers:
+  - Status 200 is a success.
+  - Status 410, and status 400 with the reason `BadDeviceToken` or `DeviceTokenNotForTopic`, wrap `ErrGone`. The caller removes the row. The error text keeps the status and the reason.
+  - Every other answer is a `*StatusError` with the code, `RetryAfter`, and the reason. The reason goes through `webpush.ReasonFrom`, so text of a third party cannot add a line to the log.
+  - Nothing is retried, as in Web Push.
+- `BadDeviceToken` is also the answer when a sandbox token goes to the production host.
+  A wrong `CHALK_APNS_ENV` therefore makes the caller remove rows.
+  The app uploads its token again at its next reconcile (136-4b and 136-4d).
+- `internal/webpush/send.go`: the guarded HTTP client moved out of `NewSender` into `newClient` and `newTransport`.
+  The new `NewHTTP2Client(timeout, opts...)` returns the same client with `ForceAttemptHTTP2`.
+  The client connects only to public addresses, uses no proxy, follows no redirect, and honors `WithIPv4Only`.
+  Go turns HTTP/2 off for a transport with a custom dial function, and APNs speaks only HTTP/2.
+  The Web Push sender keeps HTTP/1.1.
+  `ReasonFrom` is the new exported form of `reasonFrom`.
+  `internal/webpush/http2_test.go` shows that the transport speaks HTTP/2 to a TLS test server with the flag and HTTP/1.1 without it.
+- `internal/config/push.go`: `PushConfig.APNs` (`APNsConfig`) reads these variables:
+
+  | Variable | Value |
+  | --- | --- |
+  | `CHALK_APNS_KEY` | The `.p8` key, as PEM or bare base64. |
+  | `CHALK_APNS_KEY_ID` | The key id. |
+  | `CHALK_APNS_TEAM_ID` | The team id. |
+  | `CHALK_APNS_TOPIC` | The bundle id of the app. It is `at.73c.chalk` for the build of the owner. |
+  | `CHALK_APNS_ENV` | `production` (default) or `sandbox`. |
+
+  The key, the key id, the team id, and the topic must all be set, or none of them.
+  The code checks the values only if `CHALK_PUSH_ENABLED=true`, as it does for the VAPID values.
+
+#### Limits of 136-4a
+
+- chalkd does not build or use the sender yet.
+  The variables have no effect, and no push goes to Apple.
+- chalkctl does not know the variables.
+  The repo rule is that a server variable is not done until chalkctl generates it, keeps it on `--force`, and backfills it on `update`.
+  That is 136-4c.
+  chalkctl cannot generate this key, because the operator gets it from Apple and supplies it.
+- Nothing was sent to the real APNs.
+  The tests use a local TLS test server.
+- Verification: `go test ./internal/apns/ ./internal/webpush/ ./internal/config/` passes.
 
 ### 136-5 distribution
 
-Free signing expires after 7 days, so it serves 136-1 only.
-A paid Apple Developer account is the precondition for TestFlight.
-Check Apple's current rule for the review of internal TestFlight builds before this slice.
+Free signing expires after 7 days, so it served 136-1 only.
+The owner decided on 16 November 2026 to distribute the app through TestFlight, with a public link for the users of the owner's server.
+This needs the paid Apple Developer account, which is not active yet.
+Nothing in this slice is built.
+
+#### Plan
+
+- A new `ios` job in `.github/workflows/release.yml` runs on a macOS runner for each `v*` tag.
+  1. It sets `MARKETING_VERSION` from the tag.
+  2. It sets `CURRENT_PROJECT_VERSION` from the run number, because Apple rejects an upload whose build number does not increase.
+  3. It runs `xcodebuild archive`.
+  4. It runs `xcodebuild -exportArchive` with the upload to App Store Connect.
+- The job uses no fastlane and no other dependency.
+- Signing uses an App Store Connect API key (the `.p8` file, the key id, and the issuer id) as three GitHub secrets, with `-allowProvisioningUpdates`.
+  Apple then manages the certificate and the profile, and GitHub stores no certificate.
+  The key goes into the threat model next to the desktop signing secrets.
+  To check: the role that this key needs. Admin is believed necessary for managed signing.
+
+#### Manual steps
+
+- Once: the app record, the API key, the external tester group, and its public link.
+- Once: Beta App Review for the first build of the external group.
+  Guideline 4.2 (minimum functionality) is the risk for an app that is a web view.
+- For each later build: one click to add the build to the group.
+  The App Store Connect API can automate this later.
+
+#### Checks before relying on it
+
+- If the macOS runner image of GitHub has Xcode 27.2.
+  The project uses the project format of Xcode 27 and a deployment target of 27.2.
+  The fallbacks are a self-hosted runner on the Mac of the owner, or Xcode Cloud.
+- The cost of macOS runner minutes. They cost more on a private repository.
+
+#### TestFlight facts
+
+Read in the Apple documentation on 16 November 2026.
+The pages are old, so check each fact in App Store Connect.
+
+- An app has up to 10,000 external testers.
+- A build stays available for 90 days.
+- Only the first build of an external group needs review. Later builds "may not require a full review".
+
+#### Possible now
+
+Not built, and the owner has not asked for it.
+A job in `.github/workflows/ci.yml` can run the Swift tests on the simulator without the account.
+It also shows if the runner image has Xcode 27.2.
 
 ## Threat model draft
 
 Slice 136-1 is the first built slice.
 The shell text is now in [threat-model.md](../threat-model.md), section "The iOS shell (phase 136)".
-The list below is the design draft. The items about APNs and passkeys wait for 136-4 and 136-2.
+The list below is the design draft. The item about APNs is decided and waits for 136-4b. The item about passkeys waits for a measurement.
 
 - The shell is a new binary that the user must trust.
   The developer signs it and Apple delivers it.
@@ -375,7 +534,11 @@ The list below is the design draft. The items about APNs and passkeys wait for 1
 - The home server still serves the client.
   The statement in `docs/threat-model.md:209-215` does not change.
   The statement says that a MITM that serves the SPA bundle itself is endpoint compromise.
-- A native APNs sender, if 136-4 selects it, is a second third party after web push (`docs/threat-model.md:396-470`).
+- The native APNs sender is a second third party after web push (`docs/threat-model.md:396-470`).
+  Apple sees only ciphertext and the device token (see 136-4).
+  The sender holds the `.p8` key of the developer team, a new secret on the server.
+  The key goes into the threat model with 136-4b, when chalkd can send.
+  The App Store Connect API key of 136-5 is a second new secret, in GitHub.
 - Passkeys possibly do not work in the web view.
   Associated domains are compiled into the app, and each server has its own domain.
   Password with TOTP is not affected.
@@ -384,7 +547,7 @@ The list below is the design draft. The items about APNs and passkeys wait for 1
 ## Preconditions and unknowns
 
 - A Mac with Xcode: present.
-- A paid Apple Developer account: absent, and necessary from 136-5.
+- A paid Apple Developer account: absent. The owner will buy one. It is necessary for 136-4d and 136-5.
 - Background capture in the shell: works for app switch and screen lock on iOS 27.2.1. Measured in 136-1, including a 5-min run of each.
 - Background capture in the Home Screen web app: unmeasured.
 - `Notification` and `PushManager` in the shell: absent (see "Page facts").
@@ -392,6 +555,12 @@ The list below is the design draft. The items about APNs and passkeys wait for 1
 - The iOS versions that matter: only iOS 27.2.1 was tested.
 
 ## Sources
+
+The Apple pages for 136-4 and 136-5 were read on 16 November 2026.
+
+- [TestFlight overview](https://developer.apple.com/help/app-store-connect/test-a-beta-version/testflight-overview/): the limit of external testers and the 90 days of a build.
+- [Invite external testers](https://developer.apple.com/help/app-store-connect/test-a-beta-version/invite-external-testers/): the review of the first build of an external group.
+- [Communicating with APNs](https://developer.apple.com/library/archive/documentation/NetworkingInternet/Conceptual/RemoteNotificationsPG/CommunicatingwithAPNs.html): the rules for the provider token and the request headers.
 
 The owner's research read these pages through search summaries on 14 November 2026.
 Read each page in full before 136-1.

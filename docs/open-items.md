@@ -581,7 +581,8 @@ same space.
   membership layer); needs a re-sketch against the new phase 83, then
   its own review, before any code.
 - **An iOS wrapper app** (136, [phases/PHASE-136-IOS.md](phases/PHASE-136-IOS.md)):
-  in progress. Slice 136-1 is done (2026-11-16): on an iPhone, a call
+  in progress. Slice 136-4a is built (2026-11-16): the APNs sender package in
+  `internal/apns/` and its config values. Nothing uses it yet. Slice 136-1 is done (2026-11-16): on an iPhone, a call
   continued through an app switch and a screen lock in the shell, so the gate
   passed. The call held for more than 5 min in each case, and
   the shell has no `PushManager` and no `Notification`. Slice 136-2 is built
@@ -591,8 +592,12 @@ same space.
   Settings toggle that brings back the server screen, and the recovery-phrase
   print window), one measurement (a passkey sign-in in the shell), 136-3 (hide
   the Home Screen push hint in the shell), and the idea in 136-3 to
-  mute the microphone and turn the camera off on a phone call. Installs that
-  last longer than 7 days need a paid Apple Developer account. In the Home
+  mute the microphone and turn the camera off on a phone call. Also open:
+  136-4b (device rows, the sealed frame, and the fan-out), 136-4c (chalkctl
+  support for the APNs key), 136-4d (the shell side, and the extension), and
+  136-5 (TestFlight). 136-4d and 136-5 need the paid Apple Developer account,
+  which the owner will buy and which is not active yet. Installs that last
+  longer than 7 days need it too. Until 136-4b, no push goes to Apple. In the Home
   Screen web app the call still pauses in the background, and the call view
   says so.
 - **The SFU seam** (voice design Slice I) for rooms too large for a mesh.

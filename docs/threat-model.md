@@ -420,8 +420,14 @@ The user must trust it, in the same way as the desktop app.
 - The server pin, the session cookie, and all crypto stay in the page.
   They stay keyed to the server origin.
 
-Phase 136 has not decided on push in the shell.
-A native Apple push sender in chalkd, if it is built, adds a second third party after web push.
+The shell has no web push, so phase 136 designs a native push sender in chalkd.
+The sender uses the Apple Push Notification service (APNs), and it adds a second third party after web push.
+Apple sees only ciphertext and the device token.
+The app makes its own key pair and authentication secret.
+chalkd encrypts the payload to them, as in web push, and a Notification Service Extension in the app decrypts it.
+If the extension fails, the notification has a constant text.
+This is designed and not yet sending: chalkd builds no sender yet (136-4a is a package with no caller).
+The full third-party section comes with 136-4b.
 Passkeys possibly do not work in the web view, because associated domains are compiled into the app.
 Password with TOTP is not affected.
 This is unmeasured.

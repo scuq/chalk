@@ -78,6 +78,10 @@ func reasonFrom(body []byte) string {
 	return strings.TrimSpace(b.String())
 }
 
+// ReasonFrom returns the reason text in the response body of a push service.
+// It is the exported form of reasonFrom, for the APNs sender in package apns.
+func ReasonFrom(body []byte) string { return reasonFrom(body) }
+
 // Urgency is the Urgency header of RFC 8030.
 type Urgency string
 
@@ -122,6 +126,26 @@ func NewSender(key *VAPIDKey, timeout time.Duration, opts ...SenderOption) *Send
 	for _, o := range opts {
 		o(&so)
 	}
+	return &Sender{key: key, now: time.Now, hc: newClient(timeout, so, false)}
+}
+
+// NewHTTP2Client returns the HTTP client of a [Sender], but with HTTP/2 on.
+// It connects only to public addresses, uses no proxy, follows no redirect,
+// and gives up after timeout. The options change how the client dials, for
+// example [WithIPv4Only]. Go turns HTTP/2 off for a transport with a custom
+// dial function, and APNs speaks only HTTP/2, so the transport sets
+// ForceAttemptHTTP2. The sender of this package keeps HTTP/1.1.
+func NewHTTP2Client(timeout time.Duration, opts ...SenderOption) *http.Client {
+	var so senderOptions
+	for _, o := range opts {
+		o(&so)
+	}
+	return newClient(timeout, so, true)
+}
+
+// newClient returns the guarded HTTP client for a push service. If http2 is
+// true, the transport can use HTTP/2.
+func newClient(timeout time.Duration, so senderOptions, http2 bool) *http.Client {
 	// The dial-time guard checks the address of each connection after DNS.
 	// The transport sets Proxy to nil on purpose. With a proxy, the guard
 	// would check the address of the proxy and not the address of the
@@ -132,17 +156,19 @@ func NewSender(key *VAPIDKey, timeout time.Duration, opts ...SenderOption) *Send
 			return vetDialAddr(address)
 		},
 	}
-	return &Sender{
-		key: key,
-		now: time.Now,
-		hc: &http.Client{
-			Timeout:   timeout,
-			Transport: &http.Transport{DialContext: dialContext(dialer, so.ipv4Only), Proxy: nil},
-			CheckRedirect: func(*http.Request, []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
+	return &http.Client{
+		Timeout:   timeout,
+		Transport: newTransport(dialer, so.ipv4Only, http2),
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
 		},
 	}
+}
+
+// newTransport returns the transport of the client, with the dial function
+// of d and no proxy. If http2 is true, it sets ForceAttemptHTTP2.
+func newTransport(d *net.Dialer, ipv4Only, http2 bool) *http.Transport {
+	return &http.Transport{DialContext: dialContext(d, ipv4Only), Proxy: nil, ForceAttemptHTTP2: http2}
 }
 
 // senderOptions holds the settings that a [SenderOption] changes.
