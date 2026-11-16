@@ -122,7 +122,7 @@ The owner has no active account yet (see PHASE-136-IOS.md).
 | Slice | Content | Status |
 | --- | --- | --- |
 | 138-1 | Measurement. Create the target and `ios/Shared/`. Load the home server in a bare window. Run the checklist below on the Mac. Create the phase doc, the tags line, and the index row. | written, not compiled, measurement open |
-| 138-2 | Shell parity: server picker with the server list, navigation and permission rules, downloads, child windows, app menu with Switch server, window position memory, and the return to the picker after a failed load. The first macOS test target. | not started |
+| 138-2 | The rest of shell parity: the server list in the picker, window position memory, and plain http to loopback in a debug build. The first macOS test target. Slice 138-1 already holds the navigation and permission rules, downloads, child windows, and the Switch Server command. | not started |
 | 138-3 | Menu bar item and hide on close. A call continues while the window is hidden. | not started |
 | 138-4 | Idle and lock detection through the `chalkDesktop` bridge. | not started |
 | 138-5 | Notification Center banners while the app runs, through `chalkNotify`. A click opens the channel. | not started |
